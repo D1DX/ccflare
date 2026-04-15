@@ -108,6 +108,35 @@ export function addPerformanceIndexes(db: Database): void {
 	`);
 	log.info("Added index: idx_accounts_request_count");
 
+	// Response-chain lineage lookups
+	db.run(`
+		CREATE INDEX IF NOT EXISTS idx_requests_response_id
+		ON requests(response_id)
+		WHERE response_id IS NOT NULL
+	`);
+	log.info("Added index: idx_requests_response_id");
+
+	db.run(`
+		CREATE INDEX IF NOT EXISTS idx_requests_previous_response_id
+		ON requests(previous_response_id)
+		WHERE previous_response_id IS NOT NULL
+	`);
+	log.info("Added index: idx_requests_previous_response_id");
+
+	db.run(`
+		CREATE INDEX IF NOT EXISTS idx_requests_response_chain_timestamp
+		ON requests(response_chain_id, timestamp ASC)
+		WHERE response_chain_id IS NOT NULL
+	`);
+	log.info("Added index: idx_requests_response_chain_timestamp");
+
+	db.run(`
+		CREATE INDEX IF NOT EXISTS idx_requests_client_session_timestamp
+		ON requests(client_session_id, timestamp DESC)
+		WHERE client_session_id IS NOT NULL
+	`);
+	log.info("Added index: idx_requests_client_session_timestamp");
+
 	log.info("Performance indexes added successfully");
 }
 

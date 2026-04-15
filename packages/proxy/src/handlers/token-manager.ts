@@ -3,7 +3,7 @@ import { Logger } from "@ccflare/logger";
 import type { TokenRefreshResult } from "@ccflare/providers";
 import type { Account } from "@ccflare/types";
 import { TOKEN_REFRESH_BACKOFF_MS, TOKEN_SAFETY_WINDOW_MS } from "../constants";
-import { ERROR_MESSAGES, type ProxyContext } from "./proxy-types";
+import { ERROR_MESSAGES, type ResolvedProxyContext } from "./proxy-types";
 
 const log = new Logger("TokenManager");
 
@@ -20,7 +20,7 @@ const refreshFailures = new Map<string, number>();
  */
 export async function refreshAccessTokenSafe(
 	account: Account,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Promise<string> {
 	// Check for recent refresh failures and implement backoff
 	const lastFailure = refreshFailures.get(account.id);
@@ -33,6 +33,15 @@ export async function refreshAccessTokenSafe(
 
 	// Check if a refresh is already in progress for this account
 	if (!ctx.refreshInFlight.has(account.id)) {
+		if (!ctx.provider.refreshToken) {
+			throw new TokenRefreshError(
+				account.id,
+				new Error(
+					`Provider ${ctx.provider.name} does not support OAuth token refresh`,
+				),
+			);
+		}
+
 		// Create a new refresh promise and store it
 		const refreshPromise = ctx.provider
 			.refreshToken(account, ctx.runtime.clientId)
@@ -93,7 +102,7 @@ export async function refreshAccessTokenSafe(
  */
 export async function getValidAccessToken(
 	account: Account,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Promise<string> {
 	// API key accounts don't use access tokens
 	if (!account.refresh_token && account.api_key) {

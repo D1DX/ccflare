@@ -1,10 +1,7 @@
-import { type Account, StrategyName } from "@ccflare/types";
-
-// Array of all strategies for backwards compatibility
-export const STRATEGIES = Object.values(StrategyName);
+import { type Account, isLbStrategy, StrategyName } from "@ccflare/types";
 
 export function isValidStrategy(strategy: string): strategy is StrategyName {
-	return Object.values(StrategyName).includes(strategy as StrategyName);
+	return isLbStrategy(strategy);
 }
 
 // Default load balancing strategy
@@ -20,6 +17,3 @@ export function isAccountAvailable(
 		(!account.rate_limited_until || account.rate_limited_until < now)
 	);
 }
-
-// Re-export from types package for backwards compatibility
-export { StrategyName } from "@ccflare/types";

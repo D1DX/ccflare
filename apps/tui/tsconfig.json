@@ -2,11 +2,13 @@
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"jsx": "react-jsx",
+		"jsxImportSource": "@opentui/react",
 		"module": "ESNext",
 		"target": "ESNext",
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
-		"types": ["react", "node"]
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["bun-types", "react"]
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]

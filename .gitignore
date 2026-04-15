@@ -5,6 +5,16 @@ ccflare.db
 ccflare.db-wal
 ccflare.db-shm
 dist/
+build/
+artifacts/
+apps/desktop/.desktop-runtime/
 .DS_Store
 *.log
 tsconfig.tsbuildinfo
+tmp/
+.factory/
+.agents/skills/
+skills-lock.json
+
+.claude/skills/
+git-crypt-key

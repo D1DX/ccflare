@@ -2,9 +2,10 @@ import { requestEvents } from "@ccflare/core";
 import {
 	sanitizeRequestHeaders,
 	withSanitizedProxyHeaders,
-} from "@ccflare/http-common";
-import type { Account } from "@ccflare/types";
-import type { ProxyContext } from "./handlers";
+} from "@ccflare/http";
+import type { Account, HttpMethod } from "@ccflare/types";
+import { trackProxyBackgroundTask } from "./background-tasks";
+import type { ResolvedProxyContext } from "./handlers";
 import type { ChunkMessage, EndMessage, StartMessage } from "./worker-messages";
 
 /**
@@ -23,26 +24,27 @@ function isExpectedResponse(path: string, response: Response): boolean {
 
 export interface ResponseHandlerOptions {
 	requestId: string;
-	method: string;
+	method: HttpMethod;
 	path: string;
 	account: Account | null;
 	requestHeaders: Headers;
 	requestBody: ArrayBuffer | null;
 	response: Response;
 	timestamp: number;
+	upstreamRequestStartedAt?: number;
+	responseHeadersReceivedAt?: number;
 	retryAttempt: number;
 	failoverAttempts: number;
-	agentUsed?: string | null;
+	preExtractedModel?: string;
 }
 
 /**
  * Unified response handler that immediately streams responses
- * while forwarding data to worker for async processing
+ * while forwarding data to worker for async processing.
  */
-// Forward response to client while streaming analytics to worker
 export async function forwardToClient(
 	options: ResponseHandlerOptions,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Promise<Response> {
 	const {
 		requestId,
@@ -53,9 +55,11 @@ export async function forwardToClient(
 		requestBody,
 		response: responseRaw,
 		timestamp,
+		upstreamRequestStartedAt,
+		responseHeadersReceivedAt,
 		retryAttempt, // Always 0 in new flow, but kept for message compatibility
 		failoverAttempts,
-		agentUsed,
+		preExtractedModel,
 	} = options;
 
 	// Always strip compression headers *before* we do anything else
@@ -76,7 +80,10 @@ export async function forwardToClient(
 		accountId: account?.id || null,
 		method,
 		path,
+		upstreamPath: ctx.upstreamPath,
 		timestamp,
+		upstreamRequestStartedAt,
+		responseHeadersReceivedAt,
 		requestHeaders: requestHeadersObj,
 		requestBody: requestBody
 			? Buffer.from(requestBody).toString("base64")
@@ -84,8 +91,7 @@ export async function forwardToClient(
 		responseStatus: response.status,
 		responseHeaders: responseHeadersObj,
 		isStream,
-		providerName: ctx.provider.name,
-		agentUsed: agentUsed || null,
+		providerName: ctx.providerName,
 		retryAttempt,
 		failoverAttempts,
 	};
@@ -100,7 +106,6 @@ export async function forwardToClient(
 		path,
 		accountId: account?.id || null,
 		statusCode: response.status,
-		agentUsed: agentUsed || null,
 	});
 
 	/*********************************************************************
@@ -110,7 +115,7 @@ export async function forwardToClient(
 		// Clone response once for background consumption.
 		const analyticsClone = response.clone();
 
-		(async () => {
+		const backgroundTask = (async () => {
 			try {
 				const reader = analyticsClone.body?.getReader();
 				if (!reader) return; // Safety check
@@ -131,6 +136,7 @@ export async function forwardToClient(
 				const endMsg: EndMessage = {
 					type: "end",
 					requestId,
+					preExtractedModel,
 					success: isExpectedResponse(path, analyticsClone),
 				};
 				ctx.usageWorker.postMessage(endMsg);
@@ -138,12 +144,14 @@ export async function forwardToClient(
 				const endMsg: EndMessage = {
 					type: "end",
 					requestId,
+					preExtractedModel,
 					success: false,
 					error: (err as Error).message,
 				};
 				ctx.usageWorker.postMessage(endMsg);
 			}
 		})();
+		trackProxyBackgroundTask(backgroundTask);
 
 		// Return the sanitized response
 		return response;
@@ -152,7 +160,7 @@ export async function forwardToClient(
 	/*********************************************************************
 	 *  NON-STREAMING RESPONSES — read body in background, send END once
 	 *********************************************************************/
-	(async () => {
+	const backgroundTask = (async () => {
 		try {
 			const clone = response.clone();
 			const bodyBuf = await clone.arrayBuffer();
@@ -163,6 +171,7 @@ export async function forwardToClient(
 					bodyBuf.byteLength > 0
 						? Buffer.from(bodyBuf).toString("base64")
 						: null,
+				preExtractedModel,
 				success: isExpectedResponse(path, clone),
 			};
 			ctx.usageWorker.postMessage(endMsg);
@@ -170,12 +179,14 @@ export async function forwardToClient(
 			const endMsg: EndMessage = {
 				type: "end",
 				requestId,
+				preExtractedModel,
 				success: false,
 				error: (err as Error).message,
 			};
 			ctx.usageWorker.postMessage(endMsg);
 		}
 	})();
+	trackProxyBackgroundTask(backgroundTask);
 
 	// Return the sanitized response
 	return response;

@@ -1,4 +1,10 @@
-import { createWriteStream, existsSync, mkdirSync, statSync } from "node:fs";
+import {
+	createWriteStream,
+	existsSync,
+	mkdirSync,
+	statSync,
+	unlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +14,16 @@ import {
 	registerDisposable,
 } from "@ccflare/core";
 import type { LogEvent } from "@ccflare/types";
+
+function writeToStderr(message: string, error: unknown): void {
+	if (typeof process === "undefined") {
+		return;
+	}
+
+	const formattedError =
+		error instanceof Error ? (error.stack ?? error.message) : String(error);
+	process.stderr?.write?.(`${message}: ${formattedError}\n`);
+}
 
 export class LogFileWriter implements Disposable {
 	private logDir: string;
@@ -44,15 +60,11 @@ export class LogFileWriter implements Disposable {
 			this.stream.end();
 		}
 
-		// Simple rotation: just delete old log
-		// In production, you might want to keep a few rotated files
 		if (existsSync(this.logFile)) {
-			// For now, just delete the old file
-			// In a production system, you'd rename it to keep history
 			try {
-				require("node:fs").unlinkSync(this.logFile);
+				unlinkSync(this.logFile);
 			} catch (_e) {
-				console.error("Failed to rotate log:", _e);
+				writeToStderr("Failed to rotate log", _e);
 			}
 		}
 	}
@@ -89,7 +101,7 @@ export class LogFileWriter implements Disposable {
 				})
 				.filter((log): log is LogEvent => log !== null);
 		} catch (_e) {
-			console.error("Failed to read logs:", _e);
+			writeToStderr("Failed to read logs", _e);
 			return [];
 		}
 	}

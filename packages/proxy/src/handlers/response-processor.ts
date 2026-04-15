@@ -1,8 +1,8 @@
 import { logError, RateLimitError } from "@ccflare/core";
 import { Logger } from "@ccflare/logger";
-import type { Provider } from "@ccflare/providers";
+import type { RateLimitInfo } from "@ccflare/providers";
 import type { Account } from "@ccflare/types";
-import type { ProxyContext } from "./proxy-types";
+import type { ResolvedProxyContext } from "./proxy-types";
 
 const log = new Logger("ResponseProcessor");
 
@@ -14,8 +14,8 @@ const log = new Logger("ResponseProcessor");
  */
 export function handleRateLimitResponse(
 	account: Account,
-	rateLimitInfo: ReturnType<Provider["parseRateLimit"]>,
-	ctx: ProxyContext,
+	rateLimitInfo: RateLimitInfo,
+	ctx: ResolvedProxyContext,
 ): void {
 	if (!rateLimitInfo.resetTime) return;
 
@@ -39,21 +39,15 @@ export function handleRateLimitResponse(
 }
 
 /**
- * Updates account metadata in the background
- * @param account - The account to update
- * @param response - The response to extract metadata from
- * @param ctx - The proxy context
+ * Updates account rate-limit metadata in the background.
+ * Usage counters are owned by the worker after it processes the full response.
+ * Accepts pre-parsed rate limit info to avoid re-parsing headers.
  */
 export function updateAccountMetadata(
 	account: Account,
-	response: Response,
-	ctx: ProxyContext,
+	rateLimitInfo: RateLimitInfo,
+	ctx: ResolvedProxyContext,
 ): void {
-	// Update basic usage
-	ctx.asyncWriter.enqueue(() => ctx.dbOps.updateAccountUsage(account.id));
-
-	// Extract and update rate limit info for every response
-	const rateLimitInfo = ctx.provider.parseRateLimit(response);
 	// Only update rate limit metadata when we have actual rate limit headers
 	if (rateLimitInfo.statusHeader) {
 		const status = rateLimitInfo.statusHeader;
@@ -65,22 +59,6 @@ export function updateAccountMetadata(
 				rateLimitInfo.remaining,
 			),
 		);
-	}
-
-	// Extract tier info if supported
-	if (ctx.provider.extractTierInfo) {
-		const extractTierInfo = ctx.provider.extractTierInfo.bind(ctx.provider);
-		(async () => {
-			const tier = await extractTierInfo(response.clone() as Response);
-			if (tier && tier !== account.account_tier) {
-				log.info(
-					`Updating account ${account.name} tier from ${account.account_tier} to ${tier}`,
-				);
-				ctx.asyncWriter.enqueue(() =>
-					ctx.dbOps.updateAccountTier(account.id, tier),
-				);
-			}
-		})();
 	}
 }
 
@@ -94,21 +72,21 @@ export function updateAccountMetadata(
 export function processProxyResponse(
 	response: Response,
 	account: Account,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): boolean {
 	const isStream = ctx.provider.isStreamingResponse?.(response) ?? false;
+	// Parse rate-limit headers once and pass the result through
 	const rateLimitInfo = ctx.provider.parseRateLimit(response);
 
 	// Handle rate limit
-	if (!isStream && rateLimitInfo.isRateLimited && rateLimitInfo.resetTime) {
+	if (!isStream && rateLimitInfo.isRateLimited) {
 		handleRateLimitResponse(account, rateLimitInfo, ctx);
-		// Also update metadata for rate-limited responses
-		updateAccountMetadata(account, response, ctx);
+		updateAccountMetadata(account, rateLimitInfo, ctx);
 		return true; // Signal rate limit
 	}
 
 	// Update account metadata in background
-	updateAccountMetadata(account, response, ctx);
+	updateAccountMetadata(account, rateLimitInfo, ctx);
 	return false;
 }
 

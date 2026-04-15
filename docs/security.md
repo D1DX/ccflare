@@ -63,7 +63,7 @@ ccflare is a load balancer proxy that manages multiple OAuth accounts to distrib
 1. **OAuth Tokens**: Refresh tokens and access tokens for Claude API access
 2. **Request Data**: User prompts and API request payloads
 3. **Response Data**: Claude's responses containing potentially sensitive information
-4. **Account Metadata**: Usage statistics, rate limit information, and tier data
+4. **Account Metadata**: Usage statistics, rate limit information, and account configuration data
 
 ### Threat Actors
 
@@ -107,16 +107,16 @@ generateAuthUrl(config: OAuthConfig, pkce: PKCEChallenge): string {
     // ...
 }
 
-// Session-based OAuth flow with secure verifier storage
+// Session-based OAuth flow with secure state storage
 // packages/database/src/migrations.ts
-CREATE TABLE IF NOT EXISTS oauth_sessions (
+CREATE TABLE IF NOT EXISTS auth_sessions (
     id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    auth_method TEXT NOT NULL,
     account_name TEXT NOT NULL,
-    verifier TEXT NOT NULL,  // PKCE verifier stored securely
-    mode TEXT NOT NULL,
-    tier INTEGER DEFAULT 1,
-    created_at INTEGER NOT NULL,
-    expires_at INTEGER NOT NULL  // Auto-cleanup of expired sessions
+    state_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
 )
 
 // Scopes requested from Anthropic
@@ -405,7 +405,7 @@ bun cli cleanup --type requests --force
 
 ### Current State
 - **No authentication required**: All endpoints are publicly accessible when network-reachable
-- **Dashboard**: Accessible without authentication at `/dashboard`
+- **Dashboard**: Accessible without authentication at `/`
 - **API endpoints**: All `/api/*` endpoints are unprotected
 - **No CORS headers**: The server does not set any CORS headers, effectively allowing requests from any origin
 - **No rate limiting**: Individual clients can make unlimited requests to API endpoints
@@ -614,10 +614,7 @@ function addSecurityHeaders(response: Response): Response {
 ### Session-Based OAuth Flow
 - **Change**: Migrated from direct account creation to session-based OAuth endpoints
 - **Security Benefit**: Improved PKCE flow with session management
-- **Implementation**: Stores verifier securely in oauth_sessions table with expiration
-
-### Agent-Based Model Selection
-- **Feature**: Added ability to override model selection based on agent preferences
+- **Implementation**: Stores OAuth session state securely in `auth_sessions` with expiration
 - **Security Consideration**: Model modifications are tracked in request metadata
 - **Implementation**: Intercepts and modifies request body before proxying
 

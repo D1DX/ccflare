@@ -2,12 +2,29 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Disposable } from "@ccflare/core";
-import type { Account, StrategyStore } from "@ccflare/types";
+import type {
+	Account,
+	AccountProvider,
+	AnalyticsResponse,
+	AuthMethod,
+	HttpMethod,
+	Request,
+	RequestSummary,
+	StrategyStore,
+} from "@ccflare/types";
 import { ensureSchema, runMigrations } from "./migrations";
+import type { RequestWithAccountName } from "./models/request-row";
 import { resolveDbPath } from "./paths";
-import { AccountRepository } from "./repositories/account.repository";
-import { AgentPreferenceRepository } from "./repositories/agent-preference.repository";
-import { OAuthRepository } from "./repositories/oauth.repository";
+import {
+	AccountRepository,
+	type CreateAccountData,
+	type UpdateAccountData,
+} from "./repositories/account.repository";
+import {
+	type AnalyticsQueryOptions,
+	AnalyticsRepository,
+} from "./repositories/analytics.repository";
+import { AuthSessionRepository } from "./repositories/auth-session.repository";
 import {
 	type RequestData,
 	RequestRepository,
@@ -26,14 +43,15 @@ export interface RuntimeConfig {
 export class DatabaseOperations implements StrategyStore, Disposable {
 	private db: Database;
 	private runtime?: RuntimeConfig;
+	private closed = false;
 
 	// Repositories
 	private accounts: AccountRepository;
+	private analytics: AnalyticsRepository;
 	private requests: RequestRepository;
-	private oauth: OAuthRepository;
+	private authSessions: AuthSessionRepository;
 	private strategy: StrategyRepository;
 	private stats: StatsRepository;
-	private agentPreferences: AgentPreferenceRepository;
 
 	constructor(dbPath?: string) {
 		const resolvedPath = dbPath ?? resolveDbPath();
@@ -45,6 +63,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.db = new Database(resolvedPath, { create: true });
 
 		// Configure SQLite for better concurrency
+		this.db.exec("PRAGMA foreign_keys = ON"); // Enforce declared foreign keys
 		this.db.exec("PRAGMA journal_mode = WAL"); // Enable Write-Ahead Logging
 		this.db.exec("PRAGMA busy_timeout = 5000"); // Wait up to 5 seconds before throwing "database is locked"
 		this.db.exec("PRAGMA synchronous = NORMAL"); // Better performance while maintaining safety
@@ -54,11 +73,11 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 
 		// Initialize repositories
 		this.accounts = new AccountRepository(this.db);
+		this.analytics = new AnalyticsRepository(this.db);
 		this.requests = new RequestRepository(this.db);
-		this.oauth = new OAuthRepository(this.db);
+		this.authSessions = new AuthSessionRepository(this.db);
 		this.strategy = new StrategyRepository(this.db);
 		this.stats = new StatsRepository(this.db);
-		this.agentPreferences = new AgentPreferenceRepository(this.db);
 	}
 
 	setRuntimeConfig(runtime: RuntimeConfig): void {
@@ -78,10 +97,58 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return this.accounts.findById(accountId);
 	}
 
+	getAccountByName(name: string): Account | null {
+		return this.accounts.findByName(name);
+	}
+
+	getAccountsByProvider(provider: Account["provider"]): Account[] {
+		return this.accounts.findByProvider(provider);
+	}
+
+	getAvailableAccountsByProvider(provider: Account["provider"]): Account[] {
+		return this.accounts.findAvailableForProvider(provider);
+	}
+
+	createAccount(data: CreateAccountData): Account {
+		return this.accounts.create(data);
+	}
+
+	/**
+	 * Create an API-key account with duplicate-name check.
+	 * Throws if the name is already taken.
+	 */
+	createApiKeyAccount(
+		opts: Parameters<AccountRepository["createApiKeyAccount"]>[0],
+	): Account {
+		return this.accounts.createApiKeyAccount(opts);
+	}
+
+	/**
+	 * Create an OAuth account with duplicate-name check.
+	 * Throws if the name is already taken.
+	 */
+	createOAuthAccount(
+		opts: Parameters<AccountRepository["createOAuthAccount"]>[0],
+	): Account {
+		return this.accounts.createOAuthAccount(opts);
+	}
+
+	updateAccount(accountId: string, data: UpdateAccountData): Account | null {
+		return this.accounts.update(accountId, data);
+	}
+
+	deleteAccount(accountId: string): boolean {
+		return this.accounts.delete(accountId);
+	}
+
+	countAccounts(): number {
+		return this.accounts.count();
+	}
+
 	updateAccountTokens(
 		accountId: string,
 		accessToken: string,
-		expiresAt: number,
+		expiresAt: number | null,
 		refreshToken?: string,
 	): void {
 		this.accounts.updateTokens(accountId, accessToken, expiresAt, refreshToken);
@@ -106,20 +173,12 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.accounts.updateRateLimitMeta(accountId, status, reset, remaining);
 	}
 
-	updateAccountTier(accountId: string, tier: number): void {
-		this.accounts.updateTier(accountId, tier);
-	}
-
 	pauseAccount(accountId: string): void {
 		this.accounts.pause(accountId);
 	}
 
 	resumeAccount(accountId: string): void {
 		this.accounts.resume(accountId);
-	}
-
-	renameAccount(accountId: string, newName: string): void {
-		this.accounts.rename(accountId, newName);
 	}
 
 	resetAccountSession(accountId: string, timestamp: number): void {
@@ -130,11 +189,22 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.accounts.updateRequestCount(accountId, count);
 	}
 
+	resetAccountStats(options?: { resetSessionStart?: boolean }): void {
+		this.accounts.resetStatistics(options?.resetSessionStart === true);
+	}
+
+	resetStats(): void {
+		this.clearRequestHistory();
+		this.resetAccountStats({ resetSessionStart: true });
+	}
+
 	// Request operations delegated to repository
 	saveRequestMeta(
 		id: string,
-		method: string,
+		method: HttpMethod,
 		path: string,
+		provider: AccountProvider,
+		upstreamPath: string,
 		accountUsed: string | null,
 		statusCode: number | null,
 		timestamp?: number,
@@ -143,6 +213,8 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 			id,
 			method,
 			path,
+			provider,
+			upstreamPath,
 			accountUsed,
 			statusCode,
 			timestamp,
@@ -151,8 +223,10 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 
 	saveRequest(
 		id: string,
-		method: string,
+		method: HttpMethod,
 		path: string,
+		provider: AccountProvider,
+		upstreamPath: string,
 		accountUsed: string | null,
 		statusCode: number | null,
 		success: boolean,
@@ -160,12 +234,18 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		responseTime: number,
 		failoverAttempts: number,
 		usage?: RequestData["usage"],
-		agentUsed?: string,
+		options?: {
+			timestamp?: number;
+			payload?: unknown;
+			timings?: RequestData["timings"];
+		},
 	): void {
 		this.requests.save({
 			id,
 			method,
 			path,
+			provider,
+			upstreamPath,
 			accountUsed,
 			statusCode,
 			success,
@@ -173,7 +253,9 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 			responseTime,
 			failoverAttempts,
 			usage,
-			agentUsed,
+			timestamp: options?.timestamp,
+			payload: options?.payload,
+			timings: options?.timings,
 		});
 	}
 
@@ -189,6 +271,14 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return this.requests.getPayload(id);
 	}
 
+	listRequestSummaries(limit = 50): RequestSummary[] {
+		return this.requests.listSummaries(limit);
+	}
+
+	listRequestsWithAccountNames(limit = 50): RequestWithAccountName[] {
+		return this.requests.listWithAccountNames(limit);
+	}
+
 	listRequestPayloads(limit = 50): Array<{ id: string; json: string }> {
 		return this.requests.listPayloads(limit);
 	}
@@ -199,40 +289,67 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return this.requests.listPayloadsWithAccountNames(limit);
 	}
 
-	// OAuth operations delegated to repository
-	createOAuthSession(
-		sessionId: string,
+	listResponseChainPayloadsWithAccountNames(
+		requestId: string,
+	): Array<{ id: string; json: string; account_name: string | null }> {
+		return this.requests.listResponseChainPayloadsWithAccountNames(requestId);
+	}
+
+	// Auth session operations delegated to repository
+	createAuthSession(
+		provider: AccountProvider,
+		authMethod: AuthMethod,
 		accountName: string,
-		verifier: string,
-		mode: "console" | "max",
-		tier: number,
-		ttlMinutes = 10,
-	): void {
-		this.oauth.createSession(
-			sessionId,
+		stateJson: string,
+		expiresAt: number,
+	): string {
+		return this.authSessions.createSession(
+			provider,
+			authMethod,
 			accountName,
-			verifier,
-			mode,
-			tier,
-			ttlMinutes,
+			stateJson,
+			expiresAt,
 		);
 	}
 
-	getOAuthSession(sessionId: string): {
+	getAuthSession(sessionId: string): {
+		id: string;
+		provider: AccountProvider;
+		authMethod: AuthMethod;
 		accountName: string;
-		verifier: string;
-		mode: "console" | "max";
-		tier: number;
+		stateJson: string;
+		createdAt: string;
+		expiresAt: string;
 	} | null {
-		return this.oauth.getSession(sessionId);
+		return this.authSessions.getSession(sessionId);
 	}
 
-	deleteOAuthSession(sessionId: string): void {
-		this.oauth.deleteSession(sessionId);
+	getAuthSessionByState(state: string): {
+		id: string;
+		provider: AccountProvider;
+		authMethod: AuthMethod;
+		accountName: string;
+		stateJson: string;
+		createdAt: string;
+		expiresAt: string;
+	} | null {
+		return this.authSessions.getSessionByState(state);
 	}
 
-	cleanupExpiredOAuthSessions(): number {
-		return this.oauth.cleanupExpiredSessions();
+	updateAuthSessionState(
+		sessionId: string,
+		stateJson: string,
+		expiresAt?: number,
+	): void {
+		this.authSessions.updateSessionState(sessionId, stateJson, expiresAt);
+	}
+
+	deleteAuthSession(sessionId: string): void {
+		this.authSessions.deleteSession(sessionId);
+	}
+
+	deleteExpiredAuthSessions(): number {
+		return this.authSessions.deleteExpiredSessions();
 	}
 
 	// Strategy operations delegated to repository
@@ -261,47 +378,16 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	}
 
 	// Analytics methods delegated to request repository
-	getRecentRequests(limit = 100): Array<{
-		id: string;
-		timestamp: number;
-		method: string;
-		path: string;
-		account_used: string | null;
-		status_code: number | null;
-		success: boolean;
-		response_time_ms: number | null;
-	}> {
+	getRecentRequests(limit = 100): Request[] {
 		return this.requests.getRecentRequests(limit);
 	}
 
-	getRequestStats(since?: number): {
-		totalRequests: number;
-		successfulRequests: number;
-		failedRequests: number;
-		avgResponseTime: number | null;
-	} {
-		return this.requests.getRequestStats(since);
+	clearRequestHistory(): number {
+		return this.requests.clear();
 	}
 
-	aggregateStats(rangeMs?: number) {
-		return this.requests.aggregateStats(rangeMs);
-	}
-
-	getRecentErrors(limit?: number): string[] {
-		return this.requests.getRecentErrors(limit);
-	}
-
-	getTopModels(limit?: number): Array<{ model: string; count: number }> {
-		return this.requests.getTopModels(limit);
-	}
-
-	getRequestsByAccount(since?: number): Array<{
-		accountId: string;
-		accountName: string | null;
-		requestCount: number;
-		successRate: number;
-	}> {
-		return this.requests.getRequestsByAccount(since);
+	getAnalytics(options: AnalyticsQueryOptions): AnalyticsResponse {
+		return this.analytics.getAnalytics(options);
 	}
 
 	// Cleanup operations (payload by age; request metadata by age; plus orphan sweep)
@@ -329,28 +415,12 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return { removedRequests, removedPayloads };
 	}
 
-	// Agent preference operations delegated to repository
-	getAgentPreference(agentId: string): { model: string } | null {
-		return this.agentPreferences.getPreference(agentId);
-	}
-
-	getAllAgentPreferences(): Array<{ agent_id: string; model: string }> {
-		return this.agentPreferences.getAllPreferences();
-	}
-
-	setAgentPreference(agentId: string, model: string): void {
-		this.agentPreferences.setPreference(agentId, model);
-	}
-
-	deleteAgentPreference(agentId: string): boolean {
-		return this.agentPreferences.deletePreference(agentId);
-	}
-
-	setBulkAgentPreferences(agentIds: string[], model: string): void {
-		this.agentPreferences.setBulkPreferences(agentIds, model);
-	}
-
 	close(): void {
+		if (this.closed) {
+			return;
+		}
+
+		this.closed = true;
 		// Ensure all write operations are flushed before closing
 		this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
 		this.db.close();

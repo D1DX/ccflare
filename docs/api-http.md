@@ -6,26 +6,34 @@
 # Check health status
 curl http://localhost:8080/health
 
-# Proxy a request to Claude
-curl -X POST http://localhost:8080/v1/messages \
+# Proxy a request to Anthropic
+curl -X POST http://localhost:8080/v1/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "claude-3-opus-20240229",
+    "model": "claude-sonnet-4-20250514",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
+  }'
+
+# Proxy a request to OpenAI
+curl -X POST http://localhost:8080/v1/openai/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello!"}]
   }'
 
 # List all accounts
 curl http://localhost:8080/api/accounts
 
 # View dashboard
-open http://localhost:8080/dashboard
+open http://localhost:8080
 ```
 
 ## Overview
 
-ccflare provides a RESTful HTTP API for managing accounts, monitoring usage, and proxying requests to Claude. The API runs on port 8080 by default and requires no authentication.
+ccflare provides a RESTful HTTP API for managing accounts, monitoring usage, and proxying requests to Anthropic and OpenAI. The API runs on port 8080 by default and requires no authentication.
 
 ### Base URL
 
@@ -51,7 +59,8 @@ Check the health status of the ccflare service.
   "status": "ok",
   "accounts": 5,
   "timestamp": "2024-12-17T10:30:45.123Z",
-  "strategy": "session"
+  "strategy": "session",
+  "providers": ["anthropic", "openai"]
 }
 ```
 
@@ -62,43 +71,100 @@ curl http://localhost:8080/health
 
 ---
 
-### Claude Proxy
+### Provider Proxy
 
-#### /v1/* (All Methods)
+#### /v1/{provider}/* (All Methods)
 
-Proxy requests to Claude API. All requests to paths starting with `/v1/` are forwarded to Claude using the configured load balancing strategy. This includes POST, GET, and any other HTTP methods that Claude's API supports.
+Proxy requests to upstream provider APIs. The `/v1/{provider}` prefix is stripped exactly once before forwarding upstream. Requests are routed using the configured load balancing strategy across accounts matching the target provider.
 
-**Supported Endpoints:**
-- `POST /v1/messages` - Create chat completions
-- `POST /v1/complete` - Text completion (legacy)
-- Any other Claude API v1 endpoint
-
-**Note:** There is no `/v1/models` endpoint provided by ccflare. Model listing would need to be done directly through Claude's API if such an endpoint exists.
+**Supported Providers:**
+- `/v1/anthropic/*` → `https://api.anthropic.com/*`
+- `/v1/openai/*` → `https://api.openai.com/v1/*`
 
 **Headers:**
-- All standard Claude API headers are supported
+- All standard provider API headers are supported
 - `Authorization` header is managed by ccflare (no need to provide)
 
 **Request Body:**
-Same as Claude API requirements for the specific endpoint.
+Same as the upstream provider API requirements for the specific endpoint.
 
 **Response:**
-Proxied response from Claude API, including streaming responses.
+Proxied response from the upstream provider API, including streaming responses.
 
 **Automatic Failover:**
 If a request fails or an account is rate limited, ccflare automatically retries with the next available account according to the configured load balancing strategy. This ensures high availability and reliability.
 
-**Example:**
+**Examples:**
 ```bash
-curl -X POST http://localhost:8080/v1/messages \
+# Anthropic
+curl -X POST http://localhost:8080/v1/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "claude-3-opus-20240229",
+    "model": "claude-sonnet-4-20250514",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'
+
+# OpenAI chat completions
+curl -X POST http://localhost:8080/v1/openai/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# OpenAI responses
+curl -X POST http://localhost:8080/v1/openai/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": "Hello!"
+  }'
 ```
+
+---
+
+### ccflare Compatibility Proxy
+
+#### POST /v1/ccflare/anthropic/messages
+#### POST /v1/ccflare/openai/chat/completions
+#### POST /v1/ccflare/openai/responses
+
+Compatibility routes keep the client-facing Anthropic/OpenAI schema while routing
+through a connected provider family chosen from the `model` prefix.
+
+**Model Prefix Rules:**
+- `openai/<model-id>` → prefers `codex`, then `openai`
+- `anthropic/<model-id>` → prefers `claude-code`, then `anthropic`
+
+Bare model names are rejected with `400`.
+
+**Examples:**
+```bash
+# Ask for an Anthropic model through the OpenAI chat schema
+curl -X POST http://localhost:8080/v1/ccflare/openai/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-sonnet-4",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Ask for an OpenAI model through the Anthropic Messages schema
+curl -X POST http://localhost:8080/v1/ccflare/anthropic/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "max_tokens": 100,
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+**Behavior:**
+- HTTP only; websocket upgrades are not supported on `/v1/ccflare/*`
+- requests use the same load-balancing and failover logic as native provider routes
+- responses are translated back into the requested client schema, including SSE streams
+- if no usable accounts exist in the requested family, ccflare returns `503`
 
 ---
 
@@ -115,17 +181,28 @@ List all configured accounts with their current status.
     "id": "uuid-here",
     "name": "account1",
     "provider": "anthropic",
+    "auth_method": "api_key",
+    "base_url": null,
     "requestCount": 150,
     "totalRequests": 1500,
     "lastUsed": "2024-12-17T10:25:30.123Z",
     "created": "2024-12-01T08:00:00.000Z",
-    "tier": 5,
+    "weight": 1,
     "paused": false,
     "tokenStatus": "valid",
-    "rateLimitStatus": "allowed_warning (5m)",
+    "tokenExpiresAt": null,
+    "rateLimitStatus": {
+      "code": "ok",
+      "isLimited": false,
+      "until": null
+    },
     "rateLimitReset": "2024-12-17T10:30:00.000Z",
     "rateLimitRemaining": 100,
-    "sessionInfo": "Session: 25 requests"
+    "sessionInfo": {
+      "active": true,
+      "startedAt": "2024-12-17T10:00:00.000Z",
+      "requestCount": 25
+    }
   }
 ]
 ```
@@ -137,18 +214,18 @@ curl http://localhost:8080/api/accounts
 
 ---
 
-### OAuth Flow
+### Auth Flow
 
-#### POST /api/oauth/init
+OAuth and auth endpoints are provider-scoped. The `{provider}` path segment determines which provider's OAuth flow is used (e.g., `anthropic`, `openai`, `claude-code`, `codex`).
 
-Initialize OAuth flow for adding a new account.
+#### POST /api/auth/{provider}/init
+
+Initialize an OAuth flow for adding a new account.
 
 **Request:**
 ```json
 {
-  "name": "myaccount",
-  "mode": "max",  // "max" or "console" (default: "max")
-  "tier": 5       // 1, 5, or 20 (default: 1)
+  "name": "myaccount"
 }
 ```
 
@@ -156,22 +233,25 @@ Initialize OAuth flow for adding a new account.
 ```json
 {
   "success": true,
-  "authUrl": "https://console.anthropic.com/oauth/authorize?...",
-  "sessionId": "uuid-here",
-  "step": "authorize"
+  "message": "OAuth flow initiated for 'myaccount'",
+  "data": {
+    "authUrl": "https://claude.ai/oauth/authorize?...",
+    "sessionId": "uuid-here",
+    "provider": "claude-code"
+  }
 }
 ```
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/api/oauth/init \
+curl -X POST http://localhost:8080/api/auth/claude-code/init \
   -H "Content-Type: application/json" \
-  -d '{"name": "myaccount", "mode": "max", "tier": 5}'
+  -d '{"name": "myaccount"}'
 ```
 
-#### POST /api/oauth/callback
+#### POST /api/auth/{provider}/complete
 
-Complete OAuth flow after user authorization.
+Complete the OAuth flow after user authorization.
 
 **Request:**
 ```json
@@ -186,17 +266,31 @@ Complete OAuth flow after user authorization.
 {
   "success": true,
   "message": "Account 'myaccount' added successfully!",
-  "mode": "Claude Max",
-  "tier": 5
+  "data": {
+    "provider": "claude-code"
+  }
 }
 ```
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/api/oauth/callback \
+curl -X POST http://localhost:8080/api/auth/claude-code/complete \
   -H "Content-Type: application/json" \
   -d '{"sessionId": "uuid-here", "code": "auth-code"}'
 ```
+
+#### GET /api/auth/session/{sessionId}/status
+
+Check the status of an in-progress OAuth session.
+
+**Example:**
+```bash
+curl http://localhost:8080/api/auth/session/uuid-here/status
+```
+
+#### GET /oauth/{provider}/callback
+
+Browser redirect target for the OAuth flow. This is the callback URL that the OAuth provider redirects to after the user authorizes. Not called directly by API consumers.
 
 ---
 
@@ -204,14 +298,7 @@ curl -X POST http://localhost:8080/api/oauth/callback \
 
 #### DELETE /api/accounts/:accountId
 
-Remove an account. Requires confirmation.
-
-**Request:**
-```json
-{
-  "confirm": "account-name"
-}
-```
+Remove an account.
 
 **Response:**
 ```json
@@ -223,19 +310,18 @@ Remove an account. Requires confirmation.
 
 **Example:**
 ```bash
-curl -X DELETE http://localhost:8080/api/accounts/uuid-here \
-  -H "Content-Type: application/json" \
-  -d '{"confirm": "myaccount"}'
+curl -X DELETE http://localhost:8080/api/accounts/uuid-here
 ```
 
-#### POST /api/accounts/:accountId/tier
+#### PATCH /api/accounts/:accountId
 
-Update account tier.
+Update an account (e.g., rename or change `base_url`).
 
 **Request:**
 ```json
 {
-  "tier": 5  // 1, 5, or 20
+  "name": "new-name",
+  "base_url": "https://custom-endpoint.example.com"
 }
 ```
 
@@ -243,15 +329,33 @@ Update account tier.
 ```json
 {
   "success": true,
-  "tier": 5
+  "message": "Account updated"
 }
 ```
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/api/accounts/uuid-here/tier \
+curl -X PATCH http://localhost:8080/api/accounts/uuid-here \
   -H "Content-Type: application/json" \
-  -d '{"tier": 20}'
+  -d '{"name": "new-name"}'
+```
+
+#### POST /api/accounts/:accountId/rename
+
+Rename an account.
+
+**Request:**
+```json
+{
+  "name": "new-name"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/accounts/uuid-here/rename \
+  -H "Content-Type: application/json" \
+  -d '{"name": "new-name"}'
 ```
 
 #### POST /api/accounts/:accountId/pause
@@ -353,14 +457,14 @@ Get recent request summary.
     "id": "request-uuid",
     "timestamp": "2024-12-17T10:30:45.123Z",
     "method": "POST",
-    "path": "/v1/messages",
+    "path": "/v1/anthropic/v1/messages",
     "accountUsed": "account1",
     "statusCode": 200,
     "success": true,
     "errorMessage": null,
     "responseTimeMs": 1234,
     "failoverAttempts": 0,
-    "model": "claude-3-opus-20240229",
+    "model": "claude-sonnet-4-20250514",
     "promptTokens": 50,
     "completionTokens": 100,
     "totalTokens": 150,
@@ -394,7 +498,7 @@ Get detailed request information including payloads. Request and response bodies
     "id": "request-uuid",
     "timestamp": "2024-12-17T10:30:45.123Z",
     "method": "POST",
-    "path": "/v1/messages",
+    "path": "/v1/anthropic/v1/messages",
     "accountUsed": "account1",
     "statusCode": 200,
     "success": true,
@@ -427,6 +531,17 @@ Get detailed request information including payloads. Request and response bodies
 curl "http://localhost:8080/api/requests/detail?limit=10"
 ```
 
+#### GET /api/requests/stream
+
+Stream real-time request events via Server-Sent Events (SSE).
+
+**Response:** SSE stream with request events
+
+**Example:**
+```bash
+curl -N http://localhost:8080/api/requests/stream
+```
+
 ---
 
 ### Configuration
@@ -438,7 +553,7 @@ Get current configuration.
 **Response:**
 ```json
 {
-  "lb_strategy": "session",
+  "lbStrategy": "session",
   "port": 8080,
   "sessionDurationMs": 18000000
 }
@@ -602,88 +717,64 @@ curl "http://localhost:8080/api/analytics?range=7d&accounts=premium1,premium2&mo
 
 ---
 
-### Agent Management
+### Maintenance
 
-#### GET /api/agents
+#### POST /api/maintenance/cleanup
 
-List all available agents with their preferences.
+Run data cleanup based on configured retention settings.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/maintenance/cleanup
+```
+
+#### POST /api/maintenance/compact
+
+Compact the database to reclaim disk space.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/maintenance/compact
+```
+
+---
+
+### Data Retention
+
+#### GET /api/config/retention
+
+Get current data retention settings.
 
 **Response:**
 ```json
 {
-  "agents": [
-    {
-      "id": "agent-uuid",
-      "name": "code-reviewer",
-      "description": "Reviews code for quality and best practices",
-      "model": "claude-3-5-sonnet-20241022",
-      "source": "global",
-      "workspace": null
-    }
-  ],
-  "globalAgents": [...],
-  "workspaceAgents": [...],
-  "workspaces": [
-    {
-      "name": "my-workspace",
-      "path": "/path/to/workspace"
-    }
-  ]
+  "payloadDays": 7,
+  "requestDays": 30
 }
 ```
 
 **Example:**
 ```bash
-curl http://localhost:8080/api/agents
+curl http://localhost:8080/api/config/retention
 ```
 
-#### POST /api/agents/:agentId/preference
+#### POST /api/config/retention
 
-Update model preference for a specific agent.
+Update data retention settings.
 
 **Request:**
 ```json
 {
-  "model": "claude-3-5-sonnet-20241022"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "agentId": "agent-uuid",
-  "model": "claude-3-5-sonnet-20241022"
+  "payloadDays": 14,
+  "requestDays": 90
 }
 ```
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/api/agents/agent-uuid/preference \
+curl -X POST http://localhost:8080/api/config/retention \
   -H "Content-Type: application/json" \
-  -d '{"model": "claude-3-5-sonnet-20241022"}'
-```
-
-#### GET /api/workspaces
-
-List all available workspaces with agent counts.
-
-**Response:**
-```json
-{
-  "workspaces": [
-    {
-      "name": "my-workspace",
-      "path": "/path/to/workspace",
-      "agentCount": 5
-    }
-  ]
-}
-```
-
-**Example:**
-```bash
-curl http://localhost:8080/api/workspaces
+  -d '{"payloadDays": 14, "requestDays": 90}'
 ```
 
 ---
@@ -776,11 +867,11 @@ ccflare automatically captures streaming response bodies for analytics and debug
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/v1/messages \
+curl -X POST http://localhost:8080/v1/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "claude-3-opus-20240229",
+    "model": "claude-sonnet-4-20250514",
     "messages": [{"role": "user", "content": "Write a poem"}],
     "max_tokens": 100,
     "stream": true
@@ -794,8 +885,7 @@ curl -X POST http://localhost:8080/v1/messages \
 A web dashboard is available at:
 
 ```
-http://localhost:8080/dashboard
-http://localhost:8080/          # Redirects to /dashboard
+http://localhost:8080/          # Dashboard
 ```
 
 The dashboard provides a visual interface for:
@@ -824,9 +914,8 @@ ccflare can be configured using the following environment variables:
 ### Configuration File
 
 In addition to environment variables, ccflare supports configuration through a JSON file. The config file location varies by platform:
-- macOS: `~/Library/Application Support/ccflare/config.json`
-- Linux: `~/.config/ccflare/config.json`
-- Windows: `%APPDATA%\ccflare\config.json`
+- macOS/Linux: `~/.config/ccflare/ccflare.json` (or `$XDG_CONFIG_HOME/ccflare/ccflare.json`)
+- Windows: `%LOCALAPPDATA%\ccflare\ccflare.json` (or `%APPDATA%\ccflare\ccflare.json`)
 
 **Supported Configuration Keys:**
 ```json
@@ -861,10 +950,8 @@ The following strategy is available:
 
 4. **Request Logging**: All requests are logged with detailed metrics including tokens used, cost, and response times. Database writes are performed asynchronously to avoid blocking request processing.
 
-5. **Account Tiers**: Accounts can have different tiers (1, 5, or 20) which affect their weight in certain load balancing strategies.
+5. **Session Affinity**: The "session" strategy maintains sticky sessions for consistent routing within a time window.
 
-6. **Session Affinity**: The "session" strategy maintains sticky sessions for consistent routing within a time window.
+6. **Rate Limit Tracking**: Rate limit information is automatically extracted from responses and stored for each account, including reset times and remaining requests.
 
-7. **Rate Limit Tracking**: Rate limit information is automatically extracted from responses and stored for each account, including reset times and remaining requests.
-
-8. **Provider Filtering**: Accounts are automatically filtered by provider when selecting for requests, ensuring compatibility.
+7. **Provider Filtering**: Accounts are automatically filtered by provider when selecting for requests, ensuring compatibility.

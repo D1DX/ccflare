@@ -107,10 +107,7 @@ The following environment variables can be used during development:
 # Start the server in development mode with hot reload
 bun run dev:server
 
-# In another terminal, start the CLI
-bun run dev:cli
-
-# Or start the TUI interface
+# Start the TUI interface
 bun run dev
 
 # Or work on the dashboard
@@ -119,9 +116,7 @@ bun run dev:dashboard
 
 ### Running Tests
 
-**Note**: The project is currently in the process of setting up a comprehensive test suite. Test infrastructure is not yet implemented.
-
-When implemented, tests will use Bun's built-in test runner:
+Tests use Bun's built-in test runner:
 
 ```bash
 # Run all tests
@@ -166,24 +161,24 @@ ccflare is organized as a Bun monorepo with clear separation of concerns:
 ```
 ccflare/
 ├── apps/                    # Deployable applications
-│   ├── cli/                # Command-line interface
+│   ├── desktop/           # Desktop shell
 │   ├── lander/            # Static landing page
 │   ├── server/            # Main HTTP server
-│   └── tui/               # Terminal UI (Ink-based)
+│   ├── tui/               # Terminal UI (Ink-based)
+│   └── web/               # Browser dashboard
 ├── packages/              # Shared libraries
-│   ├── cli-commands/      # CLI command implementations
+│   ├── api/               # REST API handlers
 │   ├── config/            # Configuration management
-│   ├── core/              # Core utilities and types
-│   ├── core-di/           # Dependency injection
-│   ├── dashboard-web/     # React dashboard
+│   ├── core/              # Core utilities, lifecycle, DI
 │   ├── database/          # SQLite operations
-│   ├── http-api/          # REST API handlers
-│   ├── load-balancer/     # Load balancing strategies
+│   ├── http/              # Shared HTTP utilities
 │   ├── logger/            # Logging utilities
+│   ├── oauth-flow/        # OAuth authentication flow
 │   ├── providers/         # AI provider integrations
 │   ├── proxy/             # Request proxy logic
-│   ├── tui-core/          # TUI screen components
-│   └── types/             # Shared TypeScript types
+│   ├── runtime-server/    # Runtime bootstrap and server composition
+│   ├── types/             # Shared TypeScript types
+│   └── ui/                # Shared UI helpers and presenters
 ├── docs/                  # Documentation
 ├── biome.json            # Linting and formatting config
 ├── package.json          # Root workspace configuration
@@ -198,7 +193,7 @@ ccflare/
 
 ### Package Naming Convention
 
-- Apps: Simple names (e.g., `server`, `cli`, `tui`)
+- Apps: Simple names (e.g., `server`, `tui`, `web`)
 - Packages: Prefixed with `@ccflare/` (e.g., `@ccflare/core`, `@ccflare/database`)
 
 ## Coding Standards
@@ -218,7 +213,7 @@ We use Biome for both linting and formatting to maintain consistent code quality
    interface Account {
      id: string;
      name: string;
-     tier: 1 | 5 | 20;
+     provider: "anthropic" | "openai" | "claude-code" | "codex";
    }
    
    function getAccount(id: string): Account | null {
@@ -306,7 +301,7 @@ bun run lint
    ```typescript
    // Good
    import { Database } from '@ccflare/database';
-   import { LoadBalancer } from '@ccflare/load-balancer';
+   import { SessionStrategy } from '@ccflare/proxy';
    import { formatDate } from './utils';
    import type { Account } from '@ccflare/types';
    
@@ -345,12 +340,12 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 The scope should be the package or app name:
 - `server`, `cli`, `tui`, `lander`
-- `core`, `database`, `proxy`, `load-balancer`, etc.
+- `core`, `database`, `proxy`, `api`, etc.
 
 ### Examples
 
 ```bash
-feat(load-balancer): improve session persistence
+feat(proxy): improve session persistence
 
 Enhances the session-based strategy to better handle failover scenarios
 while maintaining session affinity. This reduces rate limit occurrences
@@ -495,18 +490,12 @@ packages/core/
    - Use descriptive test names
 
    ```typescript
-   import { describe, it, expect, mock } from 'bun:test';
-   import { calculateAccountWeight } from './utils';
-   
-   describe('calculateAccountWeight', () => {
-     it('should return 1 for pro tier accounts', () => {
-       const account = { tier: 1, name: 'pro-account' };
-       expect(calculateAccountWeight(account)).toBe(1);
-     });
-     
-     it('should return 5 for max 5x tier accounts', () => {
-       const account = { tier: 5, name: 'max-5x-account' };
-       expect(calculateAccountWeight(account)).toBe(5);
+   import { describe, expect, it } from "bun:test";
+   import { formatPercentage } from "./formatters";
+
+   describe("formatPercentage", () => {
+     it("formats whole percentages without extra decimals", () => {
+       expect(formatPercentage(42, 0)).toBe("42%");
      });
    });
    ```
@@ -697,9 +686,7 @@ The CLI functionality is integrated into the TUI application. Use `ccflare` with
 # or build and run with: bun run ccflare
 
 # Add a new account
-ccflare --add-account <name>
-# With options:
-ccflare --add-account <name> --mode <max|console> --tier <1|5|20>
+ccflare --add-account <name> --provider <anthropic|openai|claude-code|codex>
 
 # List all accounts
 ccflare --list

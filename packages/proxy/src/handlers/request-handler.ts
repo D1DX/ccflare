@@ -1,8 +1,5 @@
 import crypto from "node:crypto";
-import { ValidationError } from "@ccflare/core";
-import type { Provider } from "@ccflare/providers";
-import type { RequestMeta } from "@ccflare/types";
-import { ERROR_MESSAGES } from "./proxy-types";
+import { isHttpMethod, type RequestMeta } from "@ccflare/types";
 
 /**
  * Creates request metadata for tracking and analytics
@@ -13,29 +10,10 @@ import { ERROR_MESSAGES } from "./proxy-types";
 export function createRequestMetadata(req: Request, url: URL): RequestMeta {
 	return {
 		id: crypto.randomUUID(),
-		method: req.method,
+		method: isHttpMethod(req.method) ? req.method : "GET",
 		path: url.pathname,
 		timestamp: Date.now(),
 	};
-}
-
-/**
- * Validates that the provider can handle the requested path
- * @param provider - The provider instance
- * @param pathname - The request path
- * @throws {ValidationError} If provider cannot handle the path
- */
-export function validateProviderPath(
-	provider: Provider,
-	pathname: string,
-): void {
-	if (!provider.canHandle(pathname)) {
-		throw new ValidationError(
-			`${ERROR_MESSAGES.PROVIDER_CANNOT_HANDLE}: ${pathname}`,
-			"path",
-			pathname,
-		);
-	}
 }
 
 /**

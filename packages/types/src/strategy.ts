@@ -1,7 +1,17 @@
 import type { Account } from "./account";
 
-export enum StrategyName {
-	Session = "session",
+export const StrategyName = {
+	Session: "session",
+} as const;
+
+export type StrategyName = (typeof StrategyName)[keyof typeof StrategyName];
+
+export const LB_STRATEGIES = Object.freeze(
+	Object.values(StrategyName),
+) as readonly StrategyName[];
+
+export function isLbStrategy(value: string): value is StrategyName {
+	return LB_STRATEGIES.includes(value as StrategyName);
 }
 
 /**

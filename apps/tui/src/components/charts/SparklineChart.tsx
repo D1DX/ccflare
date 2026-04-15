@@ -1,10 +1,10 @@
-import { Box, Text } from "ink";
-import { createSparkline, formatAxisValue } from "./utils";
+import { C } from "../../theme.ts";
+import { createSparkline, formatAxisValue } from "./utils.ts";
 
 interface SparklineChartProps {
 	data: number[];
 	label?: string;
-	color?: "green" | "yellow" | "red" | "cyan" | "magenta" | "blue";
+	color?: string;
 	showMinMax?: boolean;
 	showCurrent?: boolean;
 }
@@ -12,12 +12,12 @@ interface SparklineChartProps {
 export function SparklineChart({
 	data,
 	label,
-	color = "cyan",
+	color = C.chart1,
 	showMinMax = true,
 	showCurrent = true,
 }: SparklineChartProps) {
 	if (data.length === 0) {
-		return <Text dimColor>No data</Text>;
+		return <text fg={C.muted}>No data</text>;
 	}
 
 	const sparkline = createSparkline(data);
@@ -26,25 +26,19 @@ export function SparklineChart({
 	const current = data[data.length - 1];
 
 	return (
-		<Box>
-			{label && (
-				<Box marginRight={1}>
-					<Text>{label}:</Text>
-				</Box>
-			)}
-			<Text color={color}>{sparkline}</Text>
+		<box flexDirection="row" gap={1}>
+			{label && <text fg={C.dim}>{label}:</text>}
+			<text fg={color}>{sparkline}</text>
 			{showMinMax && (
-				<Text dimColor>
-					{" "}
-					[{formatAxisValue(min)} → {formatAxisValue(max)}]
-				</Text>
+				<text fg={C.muted}>
+					[{formatAxisValue(min)}→{formatAxisValue(max)}]
+				</text>
 			)}
 			{showCurrent && (
-				<Text color={color} bold>
-					{" "}
-					{formatAxisValue(current)}
-				</Text>
+				<text fg={color}>
+					<strong>{formatAxisValue(current)}</strong>
+				</text>
 			)}
-		</Box>
+		</box>
 	);
 }

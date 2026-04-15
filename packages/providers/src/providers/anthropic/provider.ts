@@ -1,9 +1,11 @@
 import { BUFFER_SIZES } from "@ccflare/core";
-import { sanitizeProxyHeaders } from "@ccflare/http-common";
-import { Logger } from "@ccflare/logger";
-import type { Account } from "@ccflare/types";
-import { BaseProvider } from "../../base";
-import type { RateLimitInfo, TokenRefreshResult } from "../../types";
+import {
+	type Account,
+	getProviderDefaultBaseUrl,
+	isRecord,
+} from "@ccflare/types";
+import { BaseProvider, deleteTransportHeaders } from "../../base";
+import type { RateLimitInfo } from "../../types";
 
 // Hard rate limit statuses that should block account usage
 const HARD_LIMIT_STATUSES = new Set([
@@ -15,113 +17,81 @@ const HARD_LIMIT_STATUSES = new Set([
 
 // Soft warning statuses that should not block account usage
 const _SOFT_WARNING_STATUSES = new Set(["allowed_warning", "queueing_soft"]);
+const PROVIDER_NAME = "anthropic" as const;
+const DEFAULT_BASE_URL = getProviderDefaultBaseUrl(PROVIDER_NAME);
 
-const log = new Logger("AnthropicProvider");
+function parseAnthropicUsage(value: unknown):
+	| {
+			input_tokens?: number;
+			output_tokens?: number;
+			cache_creation_input_tokens?: number;
+			cache_read_input_tokens?: number;
+	  }
+	| undefined {
+	if (!isRecord(value)) {
+		return undefined;
+	}
+
+	const parsedUsage = {
+		...(typeof value.input_tokens === "number" && {
+			input_tokens: value.input_tokens,
+		}),
+		...(typeof value.output_tokens === "number" && {
+			output_tokens: value.output_tokens,
+		}),
+		...(typeof value.cache_creation_input_tokens === "number" && {
+			cache_creation_input_tokens: value.cache_creation_input_tokens,
+		}),
+		...(typeof value.cache_read_input_tokens === "number" && {
+			cache_read_input_tokens: value.cache_read_input_tokens,
+		}),
+	};
+
+	return Object.keys(parsedUsage).length > 0 ? parsedUsage : undefined;
+}
+
+function parseAnthropicMessageEnvelope(value: unknown): {
+	message?: {
+		model?: string;
+		usage?: {
+			input_tokens?: number;
+			output_tokens?: number;
+			cache_creation_input_tokens?: number;
+			cache_read_input_tokens?: number;
+		};
+	};
+} | null {
+	if (!isRecord(value)) {
+		return null;
+	}
+
+	const usage = parseAnthropicUsage(
+		value.message && isRecord(value.message) ? value.message.usage : undefined,
+	);
+	return {
+		...(isRecord(value.message) && {
+			message: {
+				...(typeof value.message.model === "string" && {
+					model: value.message.model,
+				}),
+				...(usage && { usage }),
+			},
+		}),
+	};
+}
 
 export class AnthropicProvider extends BaseProvider {
-	name = "anthropic";
+	name: string = PROVIDER_NAME;
+	defaultBaseUrl: string = DEFAULT_BASE_URL;
 
-	canHandle(_path: string): boolean {
-		// Handle all paths for now since this is Anthropic-specific
-		return true;
-	}
-
-	async refreshToken(
-		account: Account,
-		clientId: string,
-	): Promise<TokenRefreshResult> {
-		if (!account.refresh_token) {
-			throw new Error(`No refresh token available for account ${account.name}`);
-		}
-
-		log.info(
-			`Refreshing token for account ${account.name} with client ID: ${clientId}`,
-		);
-
-		const response = await fetch(
-			"https://console.anthropic.com/v1/oauth/token",
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					grant_type: "refresh_token",
-					refresh_token: account.refresh_token,
-					client_id: clientId,
-				}),
-			},
-		);
-
-		if (!response.ok) {
-			let errorMessage = response.statusText;
-			let errorData: unknown = null;
-			try {
-				errorData = await response.json();
-				const errorObj = errorData as { error?: string; message?: string };
-				errorMessage = errorObj.error || errorObj.message || errorMessage;
-			} catch {
-				// If we can't parse the error response, use the status text
-			}
-			log.error(
-				`Token refresh failed for ${account.name}: Status ${response.status}, Error: ${errorMessage}`,
-				errorData,
-			);
-			throw new Error(
-				`Failed to refresh token for account ${account.name}: ${errorMessage}`,
-			);
-		}
-
-		const json = (await response.json()) as {
-			access_token: string;
-			expires_in: number;
-			refresh_token?: string;
-		};
-
-		// Ensure we always return a refresh token
-		const refreshToken = json.refresh_token || account.refresh_token;
-
-		if (!json.refresh_token) {
-			log.warn(
-				`Anthropic refresh endpoint did not return a refresh_token for ${account.name} - continuing with previous one`,
-			);
-		} else {
-			log.info(
-				`Token refresh successful for ${account.name}, new refresh token provided`,
-			);
-		}
-
-		return {
-			accessToken: json.access_token,
-			expiresAt: Date.now() + json.expires_in * 1000,
-			refreshToken: refreshToken,
-		};
-	}
-
-	buildUrl(path: string, query: string): string {
-		return `https://api.anthropic.com${path}${query}`;
-	}
-
-	prepareHeaders(
-		headers: Headers,
-		accessToken?: string,
-		apiKey?: string,
-	): Headers {
+	prepareHeaders(headers: Headers, account: Account | null): Headers {
 		const newHeaders = new Headers(headers);
 
-		// Set authentication header
-		if (accessToken) {
-			newHeaders.set("Authorization", `Bearer ${accessToken}`);
-		} else if (apiKey) {
-			newHeaders.set("x-api-key", apiKey);
+		if (account?.api_key) {
+			newHeaders.set("x-api-key", account.api_key);
 		}
 
-		// Remove host header
-		newHeaders.delete("host");
-
-		// Remove compression headers to avoid decompression issues
-		newHeaders.delete("accept-encoding");
-		newHeaders.delete("content-encoding");
+		deleteTransportHeaders(newHeaders);
 
 		return newHeaders;
 	}
@@ -161,51 +131,13 @@ export class AnthropicProvider extends BaseProvider {
 
 		const rateLimitReset = response.headers.get("x-ratelimit-reset");
 		const resetTime = rateLimitReset
-			? parseInt(rateLimitReset) * 1000
+			? parseInt(rateLimitReset, 10) * 1000
 			: Date.now() + 60000; // Default to 1 minute
 
 		return {
 			isRateLimited: true,
 			resetTime,
 		};
-	}
-
-	async processResponse(
-		response: Response,
-		_account: Account | null,
-	): Promise<Response> {
-		// Sanitize headers by removing hop-by-hop headers
-		const headers = sanitizeProxyHeaders(response.headers);
-
-		return new Response(response.body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		});
-	}
-
-	async extractTierInfo(response: Response): Promise<number | null> {
-		try {
-			const clone = response.clone();
-			const json = (await clone.json()) as {
-				type?: string;
-				usage?: {
-					rate_limit_tokens?: number;
-				};
-			};
-
-			// Check for tier information in response
-			if (json.type === "message" && json.usage?.rate_limit_tokens) {
-				const rateLimit = json.usage.rate_limit_tokens;
-				if (rateLimit >= 800000) return 20;
-				if (rateLimit >= 200000) return 5;
-				return 1;
-			}
-		} catch {
-			// Ignore JSON parsing errors
-		}
-
-		return null;
 	}
 
 	async extractUsageInfo(response: Response): Promise<{
@@ -271,26 +203,16 @@ export class AnthropicProvider extends BaseProvider {
 						if (dataLine?.startsWith("data: ")) {
 							try {
 								const jsonStr = dataLine.slice(6); // Remove "data: " prefix
-								const data = JSON.parse(jsonStr) as {
-									message?: {
-										model?: string;
-										usage?: {
-											input_tokens?: number;
-											output_tokens?: number;
-											cache_creation_input_tokens?: number;
-											cache_read_input_tokens?: number;
-										};
-									};
-								};
+								const data = parseAnthropicMessageEnvelope(JSON.parse(jsonStr));
 
-								if (data.message?.usage) {
+								if (data?.message?.usage) {
 									const usage = data.message.usage;
-									const inputTokens = usage.input_tokens || 0;
+									const inputTokens = usage.input_tokens ?? 0;
 									const cacheCreationInputTokens =
-										usage.cache_creation_input_tokens || 0;
+										usage.cache_creation_input_tokens ?? 0;
 									const cacheReadInputTokens =
-										usage.cache_read_input_tokens || 0;
-									const outputTokens = usage.output_tokens || 0;
+										usage.cache_read_input_tokens ?? 0;
+									const outputTokens = usage.output_tokens ?? 0;
 									const promptTokens =
 										inputTokens +
 										cacheCreationInputTokens +
@@ -330,23 +252,22 @@ export class AnthropicProvider extends BaseProvider {
 				return null;
 			} else {
 				// Handle non-streaming JSON responses
-				const json = (await clone.json()) as {
-					model?: string;
-					usage?: {
-						input_tokens?: number;
-						output_tokens?: number;
-						cache_creation_input_tokens?: number;
-						cache_read_input_tokens?: number;
-					};
-				};
+				const rawJson = await clone.json();
+				const json = isRecord(rawJson)
+					? {
+							model:
+								typeof rawJson.model === "string" ? rawJson.model : undefined,
+							usage: parseAnthropicUsage(rawJson.usage),
+						}
+					: null;
 
-				if (!json.usage) return null;
+				if (!json?.usage) return null;
 
-				const inputTokens = json.usage.input_tokens || 0;
+				const inputTokens = json.usage.input_tokens ?? 0;
 				const cacheCreationInputTokens =
-					json.usage.cache_creation_input_tokens || 0;
-				const cacheReadInputTokens = json.usage.cache_read_input_tokens || 0;
-				const outputTokens = json.usage.output_tokens || 0;
+					json.usage.cache_creation_input_tokens ?? 0;
+				const cacheReadInputTokens = json.usage.cache_read_input_tokens ?? 0;
+				const outputTokens = json.usage.output_tokens ?? 0;
 				const promptTokens =
 					inputTokens + cacheCreationInputTokens + cacheReadInputTokens;
 				const completionTokens = outputTokens;
@@ -372,21 +293,5 @@ export class AnthropicProvider extends BaseProvider {
 			// Ignore parsing errors
 			return null;
 		}
-	}
-
-	/**
-	 * Check if this provider supports OAuth
-	 */
-	supportsOAuth(): boolean {
-		return true;
-	}
-
-	/**
-	 * Get the OAuth provider for this provider
-	 */
-	getOAuthProvider() {
-		// Lazy load to avoid circular dependencies
-		const { AnthropicOAuthProvider } = require("./oauth.js");
-		return new AnthropicOAuthProvider();
 	}
 }

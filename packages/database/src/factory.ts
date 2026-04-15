@@ -1,5 +1,5 @@
 import { registerDisposable, unregisterDisposable } from "@ccflare/core";
-import { DatabaseOperations, type RuntimeConfig } from "./index";
+import { DatabaseOperations, type RuntimeConfig } from "./database-operations";
 
 let instance: DatabaseOperations | null = null;
 let dbPath: string | undefined;

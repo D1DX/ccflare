@@ -3,8 +3,12 @@
 	"version": "0.1.0",
 	"type": "module",
 	"main": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"scripts": {
-		"typecheck": "bunx tsc --noEmit"
+		"typecheck": "bunx tsc --noEmit",
+		"test": "bun test ./src"
 	},
 	"dependencies": {
 		"@ccflare/config": "workspace:*",

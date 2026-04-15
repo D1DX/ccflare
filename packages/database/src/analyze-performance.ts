@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
 import { Logger } from "@ccflare/logger";
+import type { DatabaseOperations } from "./database-operations";
 import { resolveDbPath } from "./paths";
 import { analyzeIndexUsage } from "./performance-indexes";
 
@@ -163,6 +164,15 @@ function showIndexStats(db: Database) {
 /**
  * Main function
  */
+export function analyzeDatabasePerformance(dbOps: DatabaseOperations): void {
+	const db = dbOps.getDatabase();
+	log.info("\n=== Database Performance Analysis ===\n");
+	analyzeIndexUsage(db);
+	showIndexStats(db);
+	analyzeQueryPerformance(db);
+	log.info("\n=== Analysis Complete ===\n");
+}
+
 function main() {
 	const dbPath = resolveDbPath();
 	log.info(`Analyzing database at: ${dbPath}\n`);
@@ -170,15 +180,9 @@ function main() {
 	const db = new Database(dbPath, { readonly: true });
 
 	try {
-		// Show basic index usage analysis
 		analyzeIndexUsage(db);
-
-		// Show detailed index statistics
 		showIndexStats(db);
-
-		// Analyze query performance
 		analyzeQueryPerformance(db);
-
 		log.info("\n=== Analysis Complete ===\n");
 	} finally {
 		db.close();

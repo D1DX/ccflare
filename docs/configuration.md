@@ -117,7 +117,6 @@ These environment variables are not stored in the configuration file and must be
 | `ccflare_DEBUG` | Enable debug mode with console output | - | `ccflare_DEBUG=1` |
 | `ccflare_DB_PATH` | Custom database file path | Platform-specific | `ccflare_DB_PATH=/var/lib/ccflare/db.sqlite` |
 | `CF_PRICING_REFRESH_HOURS` | Hours between pricing data refreshes | `24` | `CF_PRICING_REFRESH_HOURS=12` |
-| `CF_PRICING_OFFLINE` | Disable online pricing updates | - | `CF_PRICING_OFFLINE=1` |
 | `CF_STREAM_USAGE_BUFFER_KB` | Stream usage buffer size in KB | `64` | `CF_STREAM_USAGE_BUFFER_KB=128` |
 | `CF_STREAM_TIMEOUT_MS` | Stream processing timeout in milliseconds | `60000` (1 minute) | `CF_STREAM_TIMEOUT_MS=120000` |
 
@@ -286,7 +285,6 @@ export LB_STRATEGY=session
 export SESSION_DURATION_MS=7200000  # 2 hours
 export LOG_LEVEL=INFO
 export LOG_FORMAT=json
-export CF_PRICING_OFFLINE=1  # Reduce external API calls
 ```
 
 ## Configuration Validation

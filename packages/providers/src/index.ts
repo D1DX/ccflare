@@ -8,16 +8,23 @@ export * from "./oauth";
 export * from "./providers/index";
 // Export registry functions
 export {
+	createProviderRegistry,
 	getOAuthProvider,
-	getProvider,
-	listOAuthProviders,
-	listProviders,
+	ProviderRegistry,
 	registerProvider,
+	registry as providerRegistry,
+	resolveProvider,
 } from "./registry";
 export * from "./types";
 
 import { AnthropicProvider } from "./providers/anthropic/provider";
+import { ClaudeCodeProvider } from "./providers/claude-code/provider";
+import { CodexProvider } from "./providers/codex/provider";
+import { OpenAIProvider } from "./providers/openai/provider";
 // Auto-register built-in providers
-import { registry } from "./registry";
+import { registerProvider } from "./registry";
 
-registry.registerProvider(new AnthropicProvider());
+registerProvider(new AnthropicProvider());
+registerProvider(new OpenAIProvider());
+registerProvider(new ClaudeCodeProvider());
+registerProvider(new CodexProvider());

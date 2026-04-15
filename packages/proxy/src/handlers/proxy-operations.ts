@@ -2,7 +2,7 @@ import { logError, ProviderError } from "@ccflare/core";
 import { Logger } from "@ccflare/logger";
 import type { Account, RequestMeta } from "@ccflare/types";
 import { forwardToClient } from "../response-handler";
-import { ERROR_MESSAGES, type ProxyContext } from "./proxy-types";
+import { ERROR_MESSAGES, type ResolvedProxyContext } from "./proxy-types";
 import { makeProxyRequest } from "./request-handler";
 import { handleProxyError, processProxyResponse } from "./response-processor";
 import { getValidAccessToken } from "./token-manager";
@@ -26,18 +26,15 @@ export async function proxyUnauthenticated(
 	requestMeta: RequestMeta,
 	requestBodyBuffer: ArrayBuffer | null,
 	createBodyStream: () => ReadableStream<Uint8Array> | undefined,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Promise<Response> {
 	log.warn(ERROR_MESSAGES.NO_ACCOUNTS);
 
-	const targetUrl = ctx.provider.buildUrl(url.pathname, url.search);
-	const headers = ctx.provider.prepareHeaders(
-		req.headers,
-		undefined,
-		undefined,
-	);
+	const targetUrl = ctx.provider.buildUrl(ctx.upstreamPath, url.search);
+	const headers = ctx.provider.prepareHeaders(req.headers, null);
 
 	try {
+		const upstreamRequestStartedAt = Date.now();
 		const response = await makeProxyRequest(
 			targetUrl,
 			req.method,
@@ -45,20 +42,22 @@ export async function proxyUnauthenticated(
 			createBodyStream,
 			!!req.body,
 		);
+		const responseHeadersReceivedAt = Date.now();
 
 		return forwardToClient(
 			{
 				requestId: requestMeta.id,
-				method: req.method,
+				method: requestMeta.method,
 				path: url.pathname,
 				account: null,
 				requestHeaders: req.headers,
 				requestBody: requestBodyBuffer,
 				response,
 				timestamp: requestMeta.timestamp,
+				upstreamRequestStartedAt,
+				responseHeadersReceivedAt,
 				retryAttempt: 0,
 				failoverAttempts: 0,
-				agentUsed: requestMeta.agentUsed,
 			},
 			ctx,
 		);
@@ -66,7 +65,7 @@ export async function proxyUnauthenticated(
 		logError(error, log);
 		throw new ProviderError(
 			ERROR_MESSAGES.UNAUTHENTICATED_FAILED,
-			ctx.provider.name,
+			ctx.providerName,
 			502,
 			{
 				originalError: error instanceof Error ? error.message : String(error),
@@ -95,7 +94,7 @@ export async function proxyWithAccount(
 	requestBodyBuffer: ArrayBuffer | null,
 	createBodyStream: () => ReadableStream<Uint8Array> | undefined,
 	failoverAttempts: number,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Promise<Response | null> {
 	try {
 		log.info(`Attempting request with account: ${account.name}`);
@@ -104,14 +103,19 @@ export async function proxyWithAccount(
 		const accessToken = await getValidAccessToken(account, ctx);
 
 		// Prepare request
-		const headers = ctx.provider.prepareHeaders(
-			req.headers,
-			accessToken,
-			account.api_key || undefined,
+		const requestAccount =
+			accessToken === account.access_token
+				? account
+				: { ...account, access_token: accessToken };
+		const headers = ctx.provider.prepareHeaders(req.headers, requestAccount);
+		const targetUrl = ctx.provider.buildUrl(
+			ctx.upstreamPath,
+			url.search,
+			account,
 		);
-		const targetUrl = ctx.provider.buildUrl(url.pathname, url.search);
 
 		// Make the request
+		const upstreamRequestStartedAt = Date.now();
 		const response = await makeProxyRequest(
 			targetUrl,
 			req.method,
@@ -119,6 +123,7 @@ export async function proxyWithAccount(
 			createBodyStream,
 			!!req.body,
 		);
+		const responseHeadersReceivedAt = Date.now();
 
 		// Process response and check for rate limit
 		const isRateLimited = processProxyResponse(response, account, ctx);
@@ -130,16 +135,17 @@ export async function proxyWithAccount(
 		return forwardToClient(
 			{
 				requestId: requestMeta.id,
-				method: req.method,
+				method: requestMeta.method,
 				path: url.pathname,
 				account,
 				requestHeaders: req.headers,
 				requestBody: requestBodyBuffer,
 				response,
 				timestamp: requestMeta.timestamp,
+				upstreamRequestStartedAt,
+				responseHeadersReceivedAt,
 				retryAttempt: 0,
 				failoverAttempts,
-				agentUsed: requestMeta.agentUsed,
 			},
 			ctx,
 		);

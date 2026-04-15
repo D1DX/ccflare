@@ -59,7 +59,7 @@ bun run dev --logs [N]  # Stream logs (optionally show last N lines first)
 bun run dev --stats
 
 # Account management
-bun run dev --add-account <name> [--mode max|console] [--tier 1|5|20]
+bun run dev --add-account <name> --provider <anthropic|openai|claude-code|codex>
 bun run dev --list
 bun run dev --remove <name>
 bun run dev --pause <name>
@@ -100,10 +100,10 @@ bun run dev --analyze
 - **ESC**: Cancel current operation or go back
 - During account addition:
   - Type account name and press Enter
-  - Use arrow keys to select mode (max/console)
-  - Use arrow keys to select tier (1/5/20)
-  - Browser opens automatically for OAuth
-  - Type authorization code and press Enter
+  - Use arrow keys to select the provider
+  - API-key providers prompt for a key
+  - OAuth providers open a browser automatically
+  - Type the authorization code and press Enter
 
 #### Request History Screen
 - **↑/↓**: Navigate through requests (shows 10 items per page)
@@ -173,8 +173,8 @@ Manage your OAuth accounts with an interactive interface:
 
 2 account(s) configured
 
-  work-account (tier 5)
-  personal (tier 1)
+  work-account (anthropic)
+  personal (claude-code)
   ➕ Add Account
   ← Back
 ```
@@ -443,14 +443,11 @@ The TUI uses PKCE (Proof Key for Code Exchange) for secure OAuth authentication:
 
 1. Select "Add Account" from the Accounts screen
 2. Enter a unique account name using the text input
-3. Choose the mode using SelectInput:
-   - **Max (recommended)**: Full Claude API access
-   - **Console**: Limited console access
-4. Select the tier based on your subscription (1, 5, or 20)
-5. Browser opens automatically with PKCE parameters
-6. Complete the authorization in your browser
-7. Return to the TUI and enter the authorization code
-8. Account is validated and added to the database
+3. Select the provider
+4. For OAuth providers, the browser opens automatically with PKCE parameters
+5. Complete the authorization in your browser
+6. Return to the TUI and enter the authorization code
+7. Account is validated and added to the database
 
 ### Real-time Updates
 
@@ -496,7 +493,6 @@ The TUI uses PKCE (Proof Key for Code Exchange) for secure OAuth authentication:
 2. **Monitor rate limits**: Check Statistics screen for account-specific success rates
 3. **Distribute load**: Add multiple accounts to improve throughput
 4. **PKCE OAuth**: More secure than standard OAuth flow
-5. **Tier selection**: Choose the appropriate tier for your subscription level
 
 ### Troubleshooting
 
@@ -520,7 +516,7 @@ The TUI's command-line interface is designed for automation:
 
 ```bash
 # Add account in CI/CD pipeline
-bun run dev --add-account ci-account --mode max --tier 5
+bun run dev --add-account ci-account --provider anthropic
 
 # Check statistics programmatically
 STATS=$(bun run dev --stats)
@@ -548,7 +544,7 @@ bun run dev --clear-history
 ## Architecture Notes
 
 - **Built with Ink**: React-based terminal UI framework
-- **Dependency Injection**: Uses @ccflare/core-di for service management
+- **Dependency Injection**: Uses @ccflare/core for service management
 - **Database**: SQLite-based storage with DatabaseFactory singleton
 - **Async Operations**: AsyncDbWriter for non-blocking database operations
 - **Graceful Shutdown**: Proper cleanup of resources and server on exit

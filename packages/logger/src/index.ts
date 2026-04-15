@@ -10,6 +10,9 @@ export enum LogLevel {
 }
 
 export type LogFormat = "pretty" | "json";
+export type LoggerOptions = {
+	silentConsole?: boolean;
+};
 
 // Event emitter for log streaming
 export const logBus = new EventEmitter();
@@ -20,14 +23,18 @@ export class Logger {
 	private format: LogFormat;
 	private silentConsole: boolean;
 
-	constructor(prefix: string = "", level: LogLevel = LogLevel.INFO) {
+	constructor(
+		prefix: string = "",
+		level: LogLevel = LogLevel.INFO,
+		options: LoggerOptions = {},
+	) {
 		this.prefix = prefix;
 		this.level = this.getLogLevelFromEnv() || level;
 		this.format = (process.env.LOG_FORMAT as LogFormat) || "pretty";
 		// Only show console output in debug mode or if ccflare_DEBUG is set
-		this.silentConsole = !(
-			process.env.ccflare_DEBUG === "1" || this.level === LogLevel.DEBUG
-		);
+		this.silentConsole =
+			options.silentConsole ??
+			!(process.env.ccflare_DEBUG === "1" || this.level === LogLevel.DEBUG);
 	}
 
 	private getLogLevelFromEnv(): LogLevel | null {
@@ -69,7 +76,7 @@ export class Logger {
 			};
 			logBus.emit("log", event);
 			logFileWriter.write(event);
-			if (!this.silentConsole) console.log(msg);
+			this.writeToStream(LogLevel.DEBUG, msg);
 		}
 	}
 
@@ -84,7 +91,7 @@ export class Logger {
 			};
 			logBus.emit("log", event);
 			logFileWriter.write(event);
-			if (!this.silentConsole) console.log(msg);
+			this.writeToStream(LogLevel.INFO, msg);
 		}
 	}
 
@@ -99,7 +106,7 @@ export class Logger {
 			};
 			logBus.emit("log", event);
 			logFileWriter.write(event);
-			if (!this.silentConsole) console.warn(msg);
+			this.writeToStream(LogLevel.WARN, msg);
 		}
 	}
 
@@ -114,7 +121,7 @@ export class Logger {
 			};
 			logBus.emit("log", event);
 			logFileWriter.write(event);
-			if (!this.silentConsole) console.error(msg);
+			this.writeToStream(LogLevel.ERROR, msg);
 		}
 	}
 
@@ -128,6 +135,15 @@ export class Logger {
 
 	getLevel(): LogLevel {
 		return this.level;
+	}
+
+	private writeToStream(level: LogLevel, message: string): void {
+		if (this.silentConsole || typeof process === "undefined") {
+			return;
+		}
+
+		const stream = level >= LogLevel.WARN ? process.stderr : process.stdout;
+		stream?.write?.(`${message}\n`);
 	}
 }
 

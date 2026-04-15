@@ -77,7 +77,7 @@ ccflare -h
 ### Help Output Format
 
 ```
-🎯 ccflare - Load Balancer for Claude
+🎯 ccflare - Multi-provider Load Balancer
 
 Usage: ccflare [options]
 
@@ -87,8 +87,7 @@ Options:
   --logs [N]           Stream latest N lines then follow
   --stats              Show statistics (JSON output)
   --add-account <name> Add a new account
-    --mode <max|console>  Account mode (default: max)
-    --tier <1|5|20>       Account tier (default: 1)
+    --provider <anthropic|openai|claude-code|codex>  Account provider (required)
   --list               List all accounts
   --remove <name>      Remove an account
   --pause <name>       Pause an account
@@ -108,28 +107,22 @@ Interactive Mode:
 
 #### `--add-account <name>`
 
-Add a new OAuth account to the load balancer pool.
+Add a new account to the load balancer pool.
 
 **Syntax:**
 ```bash
-ccflare --add-account <name> [--mode <max|console>] [--tier <1|5|20>]
+ccflare --add-account <name> --provider <anthropic|openai|claude-code|codex>
 ```
 
 **Options:**
-- `--mode`: Account type (optional, defaults to "max")
-  - `max`: Claude Max account
-  - `console`: Console account
-- `--tier`: Account tier (optional, defaults to 1, Max accounts only)
-  - `1`: Tier 1 account
-  - `5`: Tier 5 account
-  - `20`: Tier 20 account
+- `--provider`: Target provider. API-key providers prompt for a key; OAuth providers start a browser flow.
 
 **Interactive Flow:**
-1. If mode not provided, defaults to "max"
-2. If tier not provided (Max accounts only), defaults to 1
-3. Opens browser for OAuth authentication
-4. Waits for OAuth callback on localhost:7856
-5. Stores account credentials securely in the database
+1. Validates the provider
+2. For API-key providers, prompts for the API key
+3. For OAuth providers, opens a browser to start the OAuth flow
+4. Exchanges the returned authorization code for tokens
+5. Stores the account credentials in the database
 
 #### `--list`
 
@@ -143,8 +136,9 @@ ccflare --list
 **Output Format:**
 ```
 Accounts:
-  - account1 (max mode, tier 5)
-  - account2 (console mode, tier 1)
+  Name                Provider      Auth Method   Weight  Status
+  work-account        anthropic     api_key       1       ok
+  claude-work         claude-code   oauth         1       ok
 ```
 
 #### `--remove <name>`
@@ -272,7 +266,7 @@ ccflare --serve [--port <number>]
 
 **Access:**
 - API endpoint: `http://localhost:8080`
-- Dashboard: `http://localhost:8080/_dashboard`
+- Dashboard: `http://localhost:8080`
 
 #### `--logs [N]`
 
@@ -300,11 +294,11 @@ ccflare --logs 50
 ### Basic Account Setup
 
 ```bash
-# Add a Claude Max account with tier 5
-ccflare --add-account work-account --mode max --tier 5
+# Add an Anthropic API key account
+ccflare --add-account work-account --provider anthropic
 
-# Add a Console account
-ccflare --add-account personal-account --mode console
+# Start a Claude Code OAuth flow
+ccflare --add-account personal-account --provider claude-code
 
 # List all accounts
 ccflare --list
@@ -370,7 +364,7 @@ ccflare
 ```bash
 # Add multiple accounts via script
 for i in {1..3}; do
-  ccflare --add-account "account-$i" --mode max --tier 5
+  ccflare --add-account "account-$i" --provider anthropic
 done
 
 # Monitor account status
@@ -473,7 +467,6 @@ The SQLite database follows the same directory structure:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CF_PRICING_REFRESH_HOURS` | Pricing cache duration | 24 |
-| `CF_PRICING_OFFLINE` | Offline mode flag (1/0) | 0 |
 
 ## Troubleshooting
 
@@ -565,7 +558,7 @@ ccflare --logs
    - Monitor logs with `ccflare --logs` for suspicious activity
 
 4. **Performance**
-   - Use higher-tier accounts for heavy workloads
+   - Use multiple accounts to spread traffic and absorb rate limits
    - Implement client-side retry logic
    - Monitor rate limit patterns with `ccflare --stats`
    - Run server with `ccflare --serve` for production use

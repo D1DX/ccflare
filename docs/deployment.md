@@ -284,7 +284,6 @@ COPY tsconfig.json ./
 RUN bun install --frozen-lockfile
 RUN bun run build
 RUN cd apps/server && bun build src/server.ts --compile --outfile dist/ccflare-server
-RUN cd apps/cli && bun build src/cli.ts --compile --outfile dist/ccflare-cli
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -299,7 +298,7 @@ RUN useradd -r -s /bin/false ccflare
 
 # Copy binary and dashboard
 COPY --from=builder /app/apps/tui/dist/ccflare /usr/local/bin/ccflare
-COPY --from=builder /app/packages/dashboard-web/dist /opt/ccflare/dashboard
+COPY --from=builder /app/apps/web/dist /opt/ccflare/dashboard
 
 # Set permissions
 RUN chmod +x /usr/local/bin/ccflare
@@ -405,19 +404,19 @@ Deploy the dashboard as a static site on Cloudflare Pages while running the API 
 
 ```bash
 # Build script for Cloudflare Pages
-cd packages/dashboard-web
+cd apps/web
 bun install
 bun run build
 
-# Output directory: packages/dashboard-web/dist
+# Output directory: apps/web/dist
 ```
 
 ### Cloudflare Pages Configuration
 
 1. Connect your GitHub repository
 2. Set build configuration:
-   - Build command: `cd packages/dashboard-web && bun install && bun run build`
-   - Build output directory: `packages/dashboard-web/dist`
+   - Build command: `cd apps/web && bun install && bun run build`
+   - Build output directory: `apps/web/dist`
    - Root directory: `/`
 
 ### Environment Variables
@@ -432,7 +431,7 @@ VITE_API_URL=https://api.your-domain.com
 Update the dashboard to use external API:
 
 ```typescript
-// packages/dashboard-web/src/lib/api-client.ts
+// apps/web/src/api.ts
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 ```
 
@@ -616,7 +615,7 @@ graph TB
 > **Note**: Prometheus metrics support is planned but not yet implemented. The following is an example of how metrics could be integrated:
 
 ```typescript
-// Example: packages/http-api/src/metrics.ts
+// Example: packages/api/src/metrics.ts
 import { register, Counter, Histogram, Gauge } from 'prom-client';
 
 export const metrics = {
@@ -636,7 +635,7 @@ export const metrics = {
   activeAccounts: new Gauge({
     name: 'ccflare_active_accounts',
     help: 'Number of active accounts',
-    labelNames: ['tier']
+    labelNames: ['provider']
   }),
   
   rateLimitedAccounts: new Gauge({
@@ -841,7 +840,7 @@ CREATE TABLE accounts (
     last_used TIMESTAMPTZ,
     request_count INTEGER DEFAULT 0,
     total_requests INTEGER DEFAULT 0,
-    account_tier INTEGER DEFAULT 1,
+    weight INTEGER DEFAULT 1,
     rate_limited_until TIMESTAMPTZ,
     session_start TIMESTAMPTZ,
     session_request_count INTEGER DEFAULT 0,
@@ -856,6 +855,8 @@ CREATE TABLE requests (
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     method VARCHAR(10),
     path TEXT,
+    provider VARCHAR(32),
+    upstream_path TEXT,
     account_used UUID REFERENCES accounts(id),
     status_code INTEGER,
     success BOOLEAN,
@@ -867,6 +868,16 @@ CREATE TABLE requests (
     output_tokens INTEGER,
     cache_read_input_tokens INTEGER,
     cache_creation_input_tokens INTEGER,
+    reasoning_tokens INTEGER,
+    output_tokens_per_second DECIMAL(10, 6),
+    ttft_ms INTEGER,
+    proxy_overhead_ms INTEGER,
+    upstream_ttfb_ms INTEGER,
+    streaming_duration_ms INTEGER,
+    response_id VARCHAR(100),
+    previous_response_id VARCHAR(100),
+    response_chain_id VARCHAR(100),
+    client_session_id VARCHAR(100),
     cost_usd DECIMAL(10, 6)
 );
 

@@ -27,8 +27,8 @@ export const TIME_CONSTANTS = {
 // Buffer sizes (in bytes unless specified)
 export const BUFFER_SIZES = {
 	// Stream usage buffer size in KB (multiplied by 1024 to get bytes)
-	STREAM_USAGE_BUFFER_KB: 64,
-	STREAM_USAGE_BUFFER_BYTES: 64 * 1024,
+	STREAM_USAGE_BUFFER_KB: 256,
+	STREAM_USAGE_BUFFER_BYTES: 256 * 1024,
 
 	// Stream body max size
 	STREAM_BODY_MAX_KB: 256,
@@ -94,6 +94,3 @@ export const HTTP_STATUS = {
 	INTERNAL_SERVER_ERROR: 500,
 	SERVICE_UNAVAILABLE: 503,
 } as const;
-
-// Account tiers - removed unused ACCOUNT_TIERS export
-// Statistical calculations - removed unused STATS export

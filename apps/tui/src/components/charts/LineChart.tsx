@@ -1,5 +1,5 @@
-import { Box, Text } from "ink";
-import { formatAxisValue, getSparkChar, normalizeData } from "./utils";
+import { C } from "../../theme.ts";
+import { formatAxisValue, getSparkChar, normalizeData } from "./utils.ts";
 
 export interface LineChartData {
 	x: string;
@@ -11,7 +11,7 @@ interface LineChartProps {
 	height?: number;
 	width?: number;
 	title?: string;
-	color?: "green" | "yellow" | "red" | "cyan" | "magenta" | "blue";
+	color?: string;
 	showAxes?: boolean;
 }
 
@@ -20,19 +20,19 @@ export function LineChart({
 	height = 10,
 	width = 40,
 	title,
-	color = "cyan",
+	color = C.chart2,
 	showAxes = true,
 }: LineChartProps) {
 	if (data.length === 0) {
 		return (
-			<Box flexDirection="column">
+			<box flexDirection="column">
 				{title && (
-					<Text bold underline>
-						{title}
-					</Text>
+					<text fg={C.text}>
+						<strong>{title}</strong>
+					</text>
 				)}
-				<Text dimColor>No data available</Text>
-			</Box>
+				<text fg={C.muted}>No data available</text>
+			</box>
 		);
 	}
 
@@ -50,57 +50,63 @@ export function LineChart({
 		const dataIndex = i * xStep;
 		const value = normalized[dataIndex];
 		const y = height - 1 - Math.round(value);
-		const x = i;
 
 		if (y >= 0 && y < height) {
-			// Use different characters based on the position in the y-axis
 			const char = getSparkChar(values[dataIndex], min, max);
-			chart[y][x] = char;
+			chart[y][i] = char;
 		}
 	}
+	const rowKeyCounts = new Map<string, number>();
+	const keyedRows = chart.map((row) => {
+		const baseKey = row.join("");
+		const count = (rowKeyCounts.get(baseKey) ?? 0) + 1;
+		rowKeyCounts.set(baseKey, count);
+		return {
+			key: count === 1 ? baseKey : `${baseKey}-${count}`,
+			row,
+		};
+	});
 
 	return (
-		<Box flexDirection="column">
+		<box flexDirection="column">
 			{title && (
-				<Box marginBottom={1}>
-					<Text bold underline>
-						{title}
-					</Text>
-				</Box>
+				<box marginBottom={1}>
+					<text fg={C.text}>
+						<strong>{title}</strong>
+					</text>
+				</box>
 			)}
 
-			{/* Y-axis labels and chart */}
 			{showAxes && (
-				<Box>
-					<Text dimColor>{formatAxisValue(max).padStart(6)} </Text>
-					<Text dimColor>┤</Text>
-				</Box>
+				<box>
+					<text fg={C.muted}>{formatAxisValue(max).padStart(6)} ┤</text>
+				</box>
 			)}
 
-			{chart.map((row, y) => (
-				<Box key={`chart-row-${y}-${height}`}>
+			{keyedRows.map(({ key, row }, y) => (
+				<box key={key}>
 					{showAxes && y === Math.floor(height / 2) && (
-						<Text dimColor>
+						<text fg={C.muted}>
 							{formatAxisValue((max + min) / 2).padStart(6)}{" "}
-						</Text>
+						</text>
 					)}
 					{showAxes && y !== Math.floor(height / 2) && (
-						<Text>{" ".repeat(6)} </Text>
+						<text>{" ".repeat(6)} </text>
 					)}
-					{showAxes && <Text dimColor>│</Text>}
-					<Text color={color}>{row.join("")}</Text>
-				</Box>
+					{showAxes && <text fg={C.muted}>│</text>}
+					<text fg={color}>{row.join("")}</text>
+				</box>
 			))}
 
 			{showAxes && (
 				<>
-					<Box>
-						<Text dimColor>{formatAxisValue(min).padStart(6)} </Text>
-						<Text dimColor>└{"─".repeat(width)}</Text>
-					</Box>
-					{/* X-axis labels */}
-					<Box marginLeft={8}>
-						<Text dimColor>
+					<box>
+						<text fg={C.muted}>
+							{formatAxisValue(min).padStart(6)} └{"─".repeat(width)}
+						</text>
+					</box>
+					<box marginLeft={8}>
+						<text fg={C.muted}>
 							{data[0].x}
 							{" ".repeat(
 								Math.max(
@@ -109,10 +115,10 @@ export function LineChart({
 								),
 							)}
 							{data[data.length - 1].x}
-						</Text>
-					</Box>
+						</text>
+					</box>
 				</>
 			)}
-		</Box>
+		</box>
 	);
 }

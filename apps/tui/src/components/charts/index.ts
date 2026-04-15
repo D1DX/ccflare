@@ -1,5 +1,5 @@
-export { BarChart, type BarChartData } from "./BarChart";
-export { LineChart, type LineChartData } from "./LineChart";
-export { PieChart, type PieChartData } from "./PieChart";
-export { SparklineChart } from "./SparklineChart";
-export * from "./utils";
+export { BarChart, type BarChartData } from "./BarChart.tsx";
+export { LineChart, type LineChartData } from "./LineChart.tsx";
+export { PieChart, type PieChartData } from "./PieChart.tsx";
+export { SparklineChart } from "./SparklineChart.tsx";
+export * from "./utils.ts";

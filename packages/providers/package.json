@@ -7,9 +7,13 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"typecheck": "bunx tsc --noEmit"
+		"typecheck": "bunx tsc --noEmit",
+		"test": "bun test ./src"
 	},
 	"dependencies": {
-		"@ccflare/core": "workspace:*"
+		"@ccflare/core": "workspace:*",
+		"@ccflare/http": "workspace:*",
+		"@ccflare/logger": "workspace:*",
+		"@ccflare/types": "workspace:*"
 	}
 }

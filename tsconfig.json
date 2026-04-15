@@ -16,8 +16,9 @@
 		"jsx": "react-jsx",
 		"baseUrl": ".",
 		"paths": {
-			"@ccflare/*": ["packages/*/src"]
+			"@ccflare/web": ["apps/web/src/index.ts"],
+			"@ccflare/web/manifest.json": ["apps/web/dist/manifest.json"],
+			"@ccflare/*": ["packages/*/src", "apps/*/src"]
 		}
-	},
-	"include": ["packages/*/src/**/*", "apps/*/src/**/*"]
+	}
 }

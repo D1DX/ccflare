@@ -28,7 +28,7 @@ When working with Claude API at scale, rate limits can become a significant bott
 - **⚠️ WARNING**: Other strategies (round-robin, least-requests, weighted) have been removed as they can trigger Claude's anti-abuse systems
 
 ### 📈 Real-Time Monitoring & Analytics
-- **Web Dashboard**: Interactive UI at `/dashboard` with live metrics
+- **Web Dashboard**: Interactive UI at the server root (`/`) with live metrics
 - **Terminal UI**: Built-in TUI for server management and monitoring
 - **Request Tracking**: Complete history with token usage and costs
 - **Performance Metrics**: Response times, success rates, and error tracking
@@ -42,7 +42,6 @@ When working with Claude API at scale, rate limits can become a significant bott
 ### 🏗️ Production Ready
 - **SQLite Persistence**: Reliable data storage with migrations
 - **Configurable Retry Logic**: Smart exponential backoff
-- **Account Tiers**: Support for Pro (1x), Max 5x, and Max 20x
 - **Extensible Architecture**: Provider-based design for future AI services
 
 ## Documentation
@@ -107,9 +106,13 @@ bun run apps/tui/src/main.ts --add-account work-account
 # Add a personal account  
 bun run apps/tui/src/main.ts --add-account personal-account
 
-# Add accounts with specific tiers
-bun run apps/tui/src/main.ts --add-account pro-account --mode max --tier 1
-bun run apps/tui/src/main.ts --add-account max-account --mode max --tier 5
+# Add Anthropic and OpenAI API key accounts
+bun run apps/tui/src/main.ts --add-account work-account --provider anthropic
+bun run apps/tui/src/main.ts --add-account personal-account --provider openai
+
+# Start provider-scoped OAuth flows
+bun run apps/tui/src/main.ts --add-account claude-work --provider claude-code
+bun run apps/tui/src/main.ts --add-account codex-work --provider codex
 
 # Or if you have ccflare command available globally
 ccflare --add-account work-account
@@ -124,7 +127,7 @@ export ANTHROPIC_BASE_URL=http://localhost:8080
 
 ### 5. Monitor Your Usage
 
-- **Web Dashboard**: Open [http://localhost:8080/dashboard](http://localhost:8080/dashboard) for real-time analytics
+- **Web Dashboard**: Open [http://localhost:8080](http://localhost:8080) for real-time analytics
 - **Terminal UI**: Use the interactive TUI started with `bun run ccflare`
 - **CLI**: Check status with `bun run apps/tui/src/main.ts --list`
 
@@ -133,19 +136,24 @@ export ANTHROPIC_BASE_URL=http://localhost:8080
 ```
 ccflare/
 ├── apps/               # Application packages
+│   ├── desktop/       # Desktop shell
+│   ├── lander/        # Landing page
 │   ├── server/        # Main proxy server
 │   ├── tui/           # Terminal UI with integrated CLI
-│   └── lander/        # Landing page
-├── packages/          # Core packages
-│   ├── core/          # Core business logic
-│   ├── cli-commands/  # CLI command implementations
+│   └── web/           # Browser dashboard
+├── packages/          # Shared packages
+│   ├── api/           # REST API handlers
+│   ├── config/        # Configuration management
+│   ├── core/          # Core utilities, lifecycle, DI, pricing
 │   ├── database/      # SQLite database layer
-│   ├── dashboard-web/ # Web dashboard UI
-│   ├── http-api/      # REST API handlers
-│   ├── load-balancer/ # Load balancing strategies
+│   ├── http/          # Shared HTTP utilities and HTTP errors
 │   ├── logger/        # Logging utilities
-│   ├── providers/     # OAuth provider system
-│   └── proxy/         # HTTP proxy implementation
+│   ├── oauth-flow/    # OAuth account onboarding
+│   ├── providers/     # Provider implementations
+│   ├── proxy/         # HTTP/WebSocket proxy implementation
+│   ├── runtime-server # Server bootstrap/runtime composition
+│   ├── types/         # Shared types and guards
+│   └── ui/            # Shared UI presenters, components, constants
 └── docs/              # Documentation
 
 ```
@@ -202,8 +210,8 @@ bun run apps/tui/src/main.ts --logs [N]               # Stream logs (optionally 
 bun run apps/tui/src/main.ts --stats                  # Show statistics (JSON)
 bun run apps/tui/src/main.ts --help                   # Show help
 
-# Add account with options
-bun run apps/tui/src/main.ts --add-account <name> --mode <max|console> --tier <1|5|20>
+# Add account
+bun run apps/tui/src/main.ts --add-account <name> --provider <anthropic|openai|claude-code|codex>
 ```
 
 For more detailed CLI documentation, see [CLI Commands](./cli.md).

@@ -1,347 +1,311 @@
-import * as tuiCore from "@ccflare/tui-core";
-import { formatCost, formatTokens } from "@ccflare/ui-common";
-import { Box, Text, useInput } from "ink";
+import { formatCost } from "@ccflare/core";
+import type { RequestPayload } from "@ccflare/types";
+import {
+	decodeBase64Body,
+	formatTime,
+	formatTokens,
+	getStatusCodeTermColor,
+	safeJsonPrettyPrint,
+} from "@ccflare/ui";
+import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useState } from "react";
-import { TokenUsageDisplay } from "./TokenUsageDisplay";
+import * as tuiCore from "../core";
+import { C } from "../theme.ts";
+import { TokenUsageDisplay } from "./TokenUsageDisplay.tsx";
 
 interface RequestsScreenProps {
-	onBack: () => void;
+	refreshKey: number;
 }
 
-export function RequestsScreen({ onBack }: RequestsScreenProps) {
-	const [requests, setRequests] = useState<tuiCore.RequestPayload[]>([]);
+export function RequestsScreen({ refreshKey }: RequestsScreenProps) {
+	const [requests, setRequests] = useState<RequestPayload[]>([]);
 	const [summaries, setSummaries] = useState<
 		Map<string, tuiCore.RequestSummary>
 	>(new Map());
 	const [loading, setLoading] = useState(true);
-	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [selectedIdx, setSelectedIdx] = useState(0);
 	const [viewDetails, setViewDetails] = useState(false);
 	const [page, setPage] = useState(0);
-	const pageSize = 10;
+	const pageSize = 12;
 
-	useInput((input, key) => {
-		if (key.escape || input === "q") {
-			if (viewDetails) {
-				setViewDetails(false);
-			} else {
-				onBack();
-			}
+	useKeyboard((key) => {
+		if (key.name === "escape") {
+			if (viewDetails) setViewDetails(false);
+			return;
 		}
 
 		if (!viewDetails) {
-			if (key.upArrow) {
-				setSelectedIndex((prev) => Math.max(0, prev - 1));
+			if (key.name === "up" || key.name === "k") {
+				setSelectedIdx((i) => Math.max(0, i - 1));
 			}
-			if (key.downArrow) {
-				setSelectedIndex((prev) =>
+			if (key.name === "down" || key.name === "j") {
+				setSelectedIdx((i) =>
 					Math.min(
 						Math.min(requests.length - 1, page * pageSize + pageSize - 1),
-						prev + 1,
+						i + 1,
 					),
 				);
 			}
-			if (key.leftArrow && page > 0) {
-				setPage(page - 1);
-				setSelectedIndex(page * pageSize - pageSize);
+			if (key.name === "left" && page > 0) {
+				setPage((p) => p - 1);
+				setSelectedIdx((page - 1) * pageSize);
 			}
-			if (key.rightArrow && (page + 1) * pageSize < requests.length) {
-				setPage(page + 1);
-				setSelectedIndex(page * pageSize + pageSize);
+			if (key.name === "right" && (page + 1) * pageSize < requests.length) {
+				setPage((p) => p + 1);
+				setSelectedIdx((page + 1) * pageSize);
 			}
-			if (key.return || input === " ") {
-				if (requests.length > 0) {
-					setViewDetails(true);
-				}
-			}
-			if (input === "r") {
-				loadRequests();
+			if (
+				key.name === "return" ||
+				key.name === "enter" ||
+				key.name === "space"
+			) {
+				if (requests.length > 0) setViewDetails(true);
 			}
 		}
 	});
 
 	const loadRequests = useCallback(async () => {
 		try {
-			const [requestData, summaryData] = await Promise.all([
+			const [reqData, sumData] = await Promise.all([
 				tuiCore.getRequests(100),
 				tuiCore.getRequestSummaries(100),
 			]);
-			setRequests(requestData);
-			setSummaries(summaryData);
+			setRequests(reqData);
+			setSummaries(sumData);
 			setLoading(false);
-		} catch (_error) {
+		} catch {
 			setLoading(false);
 		}
 	}, []);
 
 	useEffect(() => {
 		loadRequests();
-		const interval = setInterval(loadRequests, 10000); // Auto-refresh every 10 seconds
+		const interval = setInterval(loadRequests, 10000);
 		return () => clearInterval(interval);
 	}, [loadRequests]);
 
-	// For TUI, we want to show just time not full timestamp for space reasons
-	const formatTime = (ts: number): string => {
-		return new Date(ts).toLocaleTimeString();
-	};
-
-	const decodeBase64 = (str: string | null): string => {
-		if (!str) return "No data";
-		try {
-			if (str === "[streamed]") {
-				return "[Streaming data not captured]";
-			}
-			return Buffer.from(str, "base64").toString();
-		} catch {
-			return "Failed to decode";
-		}
-	};
-
-	const formatJson = (str: string): string => {
-		try {
-			const parsed = JSON.parse(str);
-			return JSON.stringify(parsed, null, 2);
-		} catch {
-			// If it's not valid JSON, return as-is
-			return str;
-		}
-	};
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey triggers manual refresh
+	useEffect(() => {
+		loadRequests();
+	}, [refreshKey, loadRequests]);
 
 	if (loading) {
 		return (
-			<Box flexDirection="column" padding={1}>
-				<Text color="cyan" bold>
-					📜 Request History
-				</Text>
-				<Text dimColor>Loading...</Text>
-			</Box>
+			<box padding={1}>
+				<text fg={C.dim}>Loading requests...</text>
+			</box>
 		);
 	}
 
-	const selectedRequest = requests[selectedIndex];
-	const selectedSummary = selectedRequest
-		? summaries.get(selectedRequest.id)
-		: undefined;
+	const selectedReq = requests[selectedIdx];
+	const selectedSum = selectedReq ? summaries.get(selectedReq.id) : undefined;
 
-	if (viewDetails && selectedRequest) {
+	// Detail view
+	if (viewDetails && selectedReq) {
 		return (
-			<Box flexDirection="column" padding={1}>
-				<Box marginBottom={1}>
-					<Text color="cyan" bold>
-						📜 Request Details
-					</Text>
-				</Box>
+			<scrollbox flexGrow={1} focused>
+				<box flexDirection="column" padding={1} gap={1}>
+					<text fg={C.text}>
+						<strong>Request Details</strong>
+					</text>
 
-				<Box flexDirection="column">
-					<Text bold>ID: {selectedRequest.id}</Text>
-					<Text bold>Time: {formatTime(selectedRequest.meta.timestamp)}</Text>
+					<box flexDirection="column">
+						<box flexDirection="row" gap={1}>
+							<text fg={C.dim}>ID:</text>
+							<text fg={C.text}>{selectedReq.id}</text>
+						</box>
+						<box flexDirection="row" gap={1}>
+							<text fg={C.dim}>Time:</text>
+							<text fg={C.text}>
+								{formatTime(selectedReq.meta.trace.timestamp)}
+							</text>
+						</box>
+						{selectedReq.meta.account.name && (
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Account:</text>
+								<text fg={C.text}>{selectedReq.meta.account.name}</text>
+							</box>
+						)}
+						{selectedSum?.model && (
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Model:</text>
+								<text fg={C.success}>{selectedSum.model}</text>
+							</box>
+						)}
+						{selectedReq.response && (
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Status:</text>
+								<text fg={getStatusCodeTermColor(selectedReq.response.status)}>
+									<strong>{selectedReq.response.status.toString()}</strong>
+								</text>
+							</box>
+						)}
+						{selectedSum?.responseTimeMs && (
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Response Time:</text>
+								<text fg={C.chart1}>
+									{selectedSum.responseTimeMs.toString()}ms
+								</text>
+							</box>
+						)}
+						{selectedReq.meta.transport.retry !== undefined &&
+							selectedReq.meta.transport.retry > 0 && (
+								<box flexDirection="row" gap={1}>
+									<text fg={C.dim}>Retries:</text>
+									<text fg={C.warning}>
+										{selectedReq.meta.transport.retry.toString()}
+									</text>
+								</box>
+							)}
+						{selectedReq.meta.transport.rateLimited && (
+							<text fg={C.warning}>Rate Limited</text>
+						)}
+						{selectedReq.error && (
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Error:</text>
+								<text fg={C.error}>{selectedReq.error}</text>
+							</box>
+						)}
+					</box>
 
-					{selectedRequest.meta.accountName && (
-						<Text>Account: {selectedRequest.meta.accountName}</Text>
-					)}
-
-					{selectedSummary?.model && (
-						<Text>
-							Model: <Text color="green">{selectedSummary.model}</Text>
-						</Text>
-					)}
-
-					{selectedSummary?.responseTimeMs && (
-						<Text>
-							Response Time:{" "}
-							<Text color="yellow">{selectedSummary.responseTimeMs}ms</Text>
-						</Text>
-					)}
-
-					{selectedRequest.meta.retry !== undefined &&
-						selectedRequest.meta.retry > 0 && (
-							<Text color="yellow">Retry: {selectedRequest.meta.retry}</Text>
+					{/* Token Usage */}
+					{selectedSum &&
+						(selectedSum.inputTokens || selectedSum.outputTokens) && (
+							<TokenUsageDisplay summary={selectedSum} />
 						)}
 
-					{selectedRequest.meta.rateLimited && (
-						<Text color="orange">Rate Limited</Text>
+					{/* Request Headers */}
+					<box flexDirection="column">
+						<text fg={C.text}>
+							<strong>Request Headers</strong>
+						</text>
+						<text fg={C.muted}>
+							{safeJsonPrettyPrint(JSON.stringify(selectedReq.request.headers))}
+						</text>
+					</box>
+
+					{/* Request Body */}
+					{selectedReq.request.body && (
+						<box flexDirection="column">
+							<text fg={C.text}>
+								<strong>Request Body</strong>
+							</text>
+							<text fg={C.muted}>
+								{safeJsonPrettyPrint(
+									decodeBase64Body(selectedReq.request.body),
+								).substring(0, 500)}
+								{decodeBase64Body(selectedReq.request.body).length > 500
+									? "…"
+									: ""}
+							</text>
+						</box>
 					)}
 
-					{selectedRequest.error && (
-						<Text color="red">Error: {selectedRequest.error}</Text>
-					)}
-
-					{/* Token Usage Section */}
-					{selectedSummary &&
-						(selectedSummary.inputTokens || selectedSummary.outputTokens) && (
-							<Box marginTop={1}>
-								<TokenUsageDisplay summary={selectedSummary} />
-							</Box>
-						)}
-
-					<Box marginTop={1}>
-						<Text bold>Request Headers:</Text>
-						<Box marginLeft={2} flexDirection="column">
-							<Text dimColor>
-								{formatJson(JSON.stringify(selectedRequest.request.headers))}
-							</Text>
-						</Box>
-					</Box>
-
-					{selectedRequest.request.body && (
-						<Box marginTop={1}>
-							<Text bold>Request Body:</Text>
-							<Box marginLeft={2}>
-								<Text dimColor>
-									{formatJson(
-										decodeBase64(selectedRequest.request.body),
-									).substring(0, 500)}
-									{decodeBase64(selectedRequest.request.body).length > 500 &&
-										"..."}
-								</Text>
-							</Box>
-						</Box>
-					)}
-
-					{selectedRequest.response && (
+					{/* Response */}
+					{selectedReq.response && (
 						<>
-							<Box marginTop={1}>
-								<Text bold>
-									Response Status:{" "}
-									<Text
-										color={
-											selectedRequest.response.status >= 200 &&
-											selectedRequest.response.status < 300
-												? "green"
-												: selectedRequest.response.status >= 400 &&
-														selectedRequest.response.status < 500
-													? "yellow"
-													: "red"
-										}
-									>
-										{selectedRequest.response.status}
-									</Text>
-								</Text>
-							</Box>
-
-							{selectedRequest.response.body && (
-								<Box marginTop={1}>
-									<Text bold>Response Body:</Text>
-									<Box marginLeft={2}>
-										<Text dimColor>
-											{formatJson(
-												decodeBase64(selectedRequest.response.body),
-											).substring(0, 500)}
-											{decodeBase64(selectedRequest.response.body).length >
-												500 && "..."}
-										</Text>
-									</Box>
-								</Box>
+							<box flexDirection="row" gap={1}>
+								<text fg={C.text}>
+									<strong>Response Status:</strong>
+								</text>
+								<text fg={getStatusCodeTermColor(selectedReq.response.status)}>
+									{selectedReq.response.status.toString()}
+								</text>
+							</box>
+							{selectedReq.response.body && (
+								<box flexDirection="column">
+									<text fg={C.text}>
+										<strong>Response Body</strong>
+									</text>
+									<text fg={C.muted}>
+										{safeJsonPrettyPrint(
+											decodeBase64Body(selectedReq.response.body),
+										).substring(0, 500)}
+										{decodeBase64Body(selectedReq.response.body).length > 500
+											? "…"
+											: ""}
+									</text>
+								</box>
 							)}
 						</>
 					)}
-				</Box>
 
-				<Box marginTop={2}>
-					<Text dimColor>Press 'q' or ESC to go back</Text>
-				</Box>
-			</Box>
+					<text fg={C.muted}>Esc: back to list</text>
+				</box>
+			</scrollbox>
 		);
 	}
 
-	// Paginated view
+	// List view
 	const startIdx = page * pageSize;
 	const endIdx = Math.min(startIdx + pageSize, requests.length);
 	const pageRequests = requests.slice(startIdx, endIdx);
 	const totalPages = Math.ceil(requests.length / pageSize);
 
 	return (
-		<Box flexDirection="column" padding={1}>
-			<Box marginBottom={1}>
-				<Text color="cyan" bold>
-					📜 Request History
-				</Text>
-				<Text dimColor>
-					Use ↑/↓ to navigate, ←/→ for pages, ENTER to view details
-				</Text>
-			</Box>
+		<box flexDirection="column" padding={1} flexGrow={1}>
+			{/* Header */}
+			<text fg={C.muted}>↑↓/jk navigate · Enter details · ←→ pages</text>
 
 			{requests.length === 0 ? (
-				<Text dimColor>No requests found</Text>
+				<text fg={C.muted}>No requests found</text>
 			) : (
-				<Box flexDirection="column">
+				<box flexDirection="column" marginTop={1}>
 					{pageRequests.map((req, idx) => {
 						const index = startIdx + idx;
-						const isSelected = index === selectedIndex;
-						const isError = req.error || !req.meta.success;
+						const isSelected = index === selectedIdx;
 						const statusCode = req.response?.status;
 						const summary = summaries.get(req.id);
 
 						return (
-							<Box key={req.id}>
-								<Text
-									color={isSelected ? "cyan" : undefined}
-									inverse={isSelected}
-								>
-									{isSelected ? "▶ " : "  "}
-									{formatTime(req.meta.timestamp)} -{" "}
+							<box
+								key={req.id}
+								backgroundColor={isSelected ? C.surface : undefined}
+								paddingX={1}
+							>
+								<text fg={isSelected ? C.accent : C.text}>
+									{isSelected ? "▸ " : "  "}
+									<span fg={C.dim}>{formatTime(req.meta.trace.timestamp)}</span>{" "}
 									{statusCode ? (
-										<Text
-											color={
-												statusCode >= 200 && statusCode < 300
-													? "green"
-													: statusCode >= 400 && statusCode < 500
-														? "yellow"
-														: "red"
-											}
-										>
-											{statusCode}
-										</Text>
+										<span fg={getStatusCodeTermColor(statusCode)}>
+											{statusCode.toString()}
+										</span>
 									) : (
-										<Text color="red">ERROR</Text>
-									)}
-									{" - "}
-									{req.meta.accountName ||
-										req.meta.accountId?.slice(0, 8) ||
-										"No Account"}
+										<span fg={C.error}>ERR</span>
+									)}{" "}
+									<span fg={C.dim}>
+										{req.meta.account.name ||
+											req.meta.account.id?.slice(0, 8) ||
+											"—"}
+									</span>
 									{summary?.model && (
-										<>
-											{" - "}
-											<Text color="magenta">
-												{summary.model.split("-").pop()}
-											</Text>
-										</>
+										<span fg={C.chart3}> {summary.model.split("-").pop()}</span>
 									)}
 									{summary?.totalTokens && (
-										<>
-											{" - "}
-											<Text dimColor>
-												{formatTokens(summary.totalTokens)} tokens
-											</Text>
-										</>
+										<span fg={C.muted}>
+											{" "}
+											{formatTokens(summary.totalTokens)}
+										</span>
 									)}
 									{summary?.costUsd && summary.costUsd > 0 && (
-										<>
-											{" - "}
-											<Text color="green">{formatCost(summary.costUsd)}</Text>
-										</>
+										<span fg={C.success}> {formatCost(summary.costUsd)}</span>
 									)}
-									{req.meta.rateLimited && (
-										<Text color="orange"> [RATE LIMITED]</Text>
+									{req.meta.transport.rateLimited && (
+										<span fg={C.warning}> [RL]</span>
 									)}
-									{isError &&
-										req.error &&
-										` - ${req.error.substring(0, 20)}...`}
-								</Text>
-							</Box>
+								</text>
+							</box>
 						);
 					})}
 
-					<Box marginTop={1}>
-						<Text dimColor>
-							Page {page + 1}/{totalPages} • {requests.length} total requests
-						</Text>
-					</Box>
-				</Box>
+					<box marginTop={1}>
+						<text fg={C.muted}>
+							Page {(page + 1).toString()}/{totalPages.toString()} ·{" "}
+							{requests.length.toString()} total
+						</text>
+					</box>
+				</box>
 			)}
-
-			<Box marginTop={2}>
-				<Text dimColor>Press 'r' to refresh • 'q' or ESC to go back</Text>
-			</Box>
-		</Box>
+		</box>
 	);
 }

@@ -1,16 +1,47 @@
 import type { RuntimeConfig } from "@ccflare/config";
 import type { AsyncDbWriter, DatabaseOperations } from "@ccflare/database";
-import type { Provider } from "@ccflare/providers";
-import type { LoadBalancingStrategy } from "@ccflare/types";
+import type { Provider, ProviderRegistry } from "@ccflare/providers";
+import {
+	type AccountProvider,
+	isAccountProvider,
+	type LoadBalancingStrategy,
+} from "@ccflare/types";
+import type { UsageWorkerTransport } from "../usage-worker";
 
 export interface ProxyContext {
 	strategy: LoadBalancingStrategy;
 	dbOps: DatabaseOperations;
 	runtime: RuntimeConfig;
-	provider: Provider;
+	providerRegistry: ProviderRegistry;
 	refreshInFlight: Map<string, Promise<string>>;
 	asyncWriter: AsyncDbWriter;
-	usageWorker: Worker;
+	usageWorker: UsageWorkerTransport;
+}
+
+export interface ResolvedProxyContext extends ProxyContext {
+	provider: Provider;
+	providerName: AccountProvider;
+	upstreamPath: string;
+}
+
+export function resolveProxyContext(
+	url: URL,
+	ctx: ProxyContext,
+): ResolvedProxyContext | null {
+	const resolvedProvider = ctx.providerRegistry.resolveProvider(url.pathname);
+	if (!resolvedProvider) {
+		return null;
+	}
+	if (!isAccountProvider(resolvedProvider.provider.name)) {
+		return null;
+	}
+
+	return {
+		...ctx,
+		provider: resolvedProvider.provider,
+		providerName: resolvedProvider.provider.name,
+		upstreamPath: resolvedProvider.upstreamPath,
+	};
 }
 
 /** Error messages used throughout the proxy module */
@@ -27,7 +58,7 @@ export const ERROR_MESSAGES = {
 
 /** Timing constants */
 export const TIMING = {
-	WORKER_SHUTDOWN_DELAY: 100, // ms
+	WORKER_SHUTDOWN_DELAY: 5000, // ms
 } as const;
 
 /** HTTP headers used in proxy operations */

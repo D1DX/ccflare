@@ -1,25 +1,45 @@
 #!/usr/bin/env bun
 import { Config } from "@ccflare/config";
-import { CLAUDE_MODEL_IDS, NETWORK, shutdown } from "@ccflare/core";
-import { container, SERVICE_KEYS } from "@ccflare/core-di";
+import { container, NETWORK, SERVICE_KEYS, shutdown } from "@ccflare/core";
 import { DatabaseFactory } from "@ccflare/database";
 import { Logger } from "@ccflare/logger";
-// Import server
-import startServer from "@ccflare/server";
-import * as tuiCore from "@ccflare/tui-core";
-import { parseArgs } from "@ccflare/tui-core";
-import { render } from "ink";
-import React from "react";
-import { App } from "./App";
+import startServer, { type ServerHandle } from "@ccflare/runtime-server";
+import { ACCOUNT_PROVIDERS } from "@ccflare/types";
+import type { AccountDisplay } from "@ccflare/ui";
+import * as tuiCore from "./core";
+import { parseArgs } from "./core";
 
 // Global singleton for auto-started server
-let runningServer: ReturnType<typeof startServer> | null = null;
+let runningServer: ServerHandle | null = null;
 
 async function ensureServer(port: number) {
 	if (!runningServer) {
 		runningServer = startServer({ port, withDashboard: true });
 	}
 	return runningServer;
+}
+
+function printAccountsTable(accounts: AccountDisplay[]) {
+	const header =
+		"Name".padEnd(20) +
+		"Provider".padEnd(14) +
+		"Auth Method".padEnd(14) +
+		"Weight".padEnd(8) +
+		"Status";
+	const separator = "─".repeat(header.length);
+
+	console.log("\nAccounts:");
+	console.log(header);
+	console.log(separator);
+	for (const account of accounts) {
+		console.log(
+			account.name.padEnd(20) +
+				account.provider.padEnd(14) +
+				account.auth_method.padEnd(14) +
+				account.weightDisplay.padEnd(8) +
+				account.rateLimitStatus,
+		);
+	}
 }
 
 async function main() {
@@ -38,7 +58,7 @@ async function main() {
 	// Handle help
 	if (parsed.help) {
 		console.log(`
-🎯 ccflare - Load Balancer for Claude
+🎯 ccflare - Multi-provider Load Balancer
 
 Usage: ccflare [options]
 
@@ -48,8 +68,7 @@ Options:
   --logs [N]           Stream latest N lines then follow
   --stats              Show statistics (JSON output)
   --add-account <name> Add a new account
-    --mode <max|console>  Account mode (default: max)
-    --tier <1|5|20>       Account tier (default: 1)
+    --provider <anthropic|openai|claude-code|codex>  Account provider (required)
   --list               List all accounts
   --remove <name>      Remove an account
   --pause <name>       Pause an account
@@ -57,8 +76,7 @@ Options:
   --analyze            Analyze database performance
   --reset-stats        Reset usage statistics
   --clear-history      Clear request history
-  --get-model          Show current default agent model
-  --set-model <model>  Set default agent model (opus-4 or sonnet-4)
+  --theme <name>       Set color theme (e.g. tokyo-night, catppuccin-mocha)
   --help, -h           Show this help message
 
 Interactive Mode:
@@ -67,7 +85,10 @@ Interactive Mode:
 Examples:
   ccflare                        # Interactive mode
   ccflare --serve                # Start server
-  ccflare --add-account work     # Add account
+  ccflare --add-account work --provider anthropic      # Add Anthropic API key account
+  ccflare --add-account team --provider openai         # Add OpenAI API key account
+  ccflare --add-account claude-work --provider claude-code  # Start Claude Code OAuth
+  ccflare --add-account codex-work --provider codex         # Start Codex OAuth
   ccflare --pause work           # Pause account
   ccflare --analyze              # Run performance analysis
   ccflare --stats                # View stats
@@ -112,10 +133,16 @@ Examples:
 	}
 
 	if (parsed.addAccount) {
+		if (!parsed.provider) {
+			console.error(
+				`Error: Provider is required. Use --provider with one of: ${ACCOUNT_PROVIDERS.join(", ")}.`,
+			);
+			process.exit(1);
+		}
+
 		await tuiCore.addAccount({
 			name: parsed.addAccount,
-			mode: parsed.mode || "max",
-			tier: parsed.tier || 1,
+			provider: parsed.provider,
 		});
 		console.log(`✅ Account "${parsed.addAccount}" added successfully`);
 		return;
@@ -126,10 +153,7 @@ Examples:
 		if (accounts.length === 0) {
 			console.log("No accounts configured");
 		} else {
-			console.log("\nAccounts:");
-			accounts.forEach((acc) => {
-				console.log(`  - ${acc.name} (${acc.mode} mode, tier ${acc.tier})`);
-			});
+			printAccountsTable(accounts);
 		}
 		return;
 	}
@@ -175,48 +199,39 @@ Examples:
 		return;
 	}
 
-	if (parsed.getModel) {
-		const config = new Config();
-		const model = config.getDefaultAgentModel();
-		console.log(`Current default agent model: ${model}`);
-		return;
-	}
-
-	if (parsed.setModel) {
-		const config = new Config();
-		// Validate the model
-		const modelMap: Record<string, string> = {
-			"opus-4": CLAUDE_MODEL_IDS.OPUS_4,
-			"sonnet-4": CLAUDE_MODEL_IDS.SONNET_4,
-			"opus-4.1": CLAUDE_MODEL_IDS.OPUS_4_1,
-		};
-
-		const fullModel = modelMap[parsed.setModel];
-		if (!fullModel) {
-			console.error(`❌ Invalid model: ${parsed.setModel}`);
-			console.error("Valid models: opus-4, sonnet-4");
-			process.exit(1);
-		}
-
-		config.setDefaultAgentModel(fullModel);
-		console.log(`✅ Default agent model set to: ${fullModel}`);
-		return;
-	}
-
 	// Default: Launch interactive TUI with auto-started server
 	const config = new Config();
 	const port = parsed.port || config.getRuntime().port || NETWORK.DEFAULT_PORT;
-	await ensureServer(port);
-	const { waitUntilExit } = render(React.createElement(App));
-	await waitUntilExit();
 
-	// Cleanup server when TUI exits
-	if (runningServer) {
-		runningServer.stop();
+	// Apply theme from CLI flag (overrides persisted config)
+	if (parsed.theme) {
+		const { setTuiTheme } = await import("./theme.ts");
+		setTuiTheme(parsed.theme);
 	}
 
-	// Shutdown all resources
-	await shutdown();
+	await ensureServer(port);
+
+	const { createCliRenderer } = await import("@opentui/core");
+	const { createRoot } = await import("@opentui/react");
+	const { App } = await import("./App.tsx");
+	const { createElement } = await import("react");
+
+	const renderer = await createCliRenderer({ exitOnCtrlC: false });
+
+	const handleQuit = async () => {
+		renderer.destroy();
+		if (runningServer) {
+			try {
+				await runningServer.stop();
+			} catch {}
+		}
+		try {
+			await shutdown();
+		} catch {}
+		process.exit(0);
+	};
+
+	createRoot(renderer).render(createElement(App, { port, onQuit: handleQuit }));
 }
 
 // Run main and handle errors
@@ -230,7 +245,7 @@ main().catch(async (error) => {
 	process.exit(1);
 });
 
-// Handle process termination
+// Handle process termination (for non-TUI mode)
 process.on("SIGINT", async () => {
 	try {
 		await shutdown();

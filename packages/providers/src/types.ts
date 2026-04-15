@@ -15,33 +15,30 @@ export interface RateLimitInfo {
 
 export interface Provider {
 	name: string;
+	defaultBaseUrl: string;
 
 	/**
-	 * Check if this provider can handle the given request path
+	 * Whether the provider supports websocket upgrades for the given upstream path.
 	 */
-	canHandle(path: string): boolean;
+	supportsWebSocket?(upstreamPath: string): boolean;
 
 	/**
 	 * Refresh the access token for an account
 	 */
-	refreshToken(account: Account, clientId: string): Promise<TokenRefreshResult>;
+	refreshToken?(
+		account: Account,
+		clientId: string,
+	): Promise<TokenRefreshResult>;
 
 	/**
 	 * Build the target URL for the provider
 	 */
-	buildUrl(path: string, query: string): string;
+	buildUrl(upstreamPath: string, query: string, account?: Account): string;
 
 	/**
 	 * Prepare headers for the provider request
-	 * @param headers - Original request headers
-	 * @param accessToken - OAuth access token (for Bearer authentication)
-	 * @param apiKey - API key (provider-specific header)
 	 */
-	prepareHeaders(
-		headers: Headers,
-		accessToken?: string,
-		apiKey?: string,
-	): Headers;
+	prepareHeaders(headers: Headers, account: Account | null): Headers;
 
 	/**
 	 * Parse rate limit information from response
@@ -55,11 +52,6 @@ export interface Provider {
 		response: Response,
 		account: Account | null,
 	): Promise<Response>;
-
-	/**
-	 * Extract tier information from response if available
-	 */
-	extractTierInfo?(response: Response): Promise<number | null>;
 
 	/**
 	 * Extract usage information from response if available
@@ -89,11 +81,10 @@ export interface OAuthProviderConfig {
 	clientId: string;
 	scopes: string[];
 	redirectUri: string;
-	mode?: string;
 }
 
 export interface OAuthProvider {
-	getOAuthConfig(mode?: string): OAuthProviderConfig;
+	getOAuthConfig(): OAuthProviderConfig;
 	exchangeCode(
 		code: string,
 		verifier: string,

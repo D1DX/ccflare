@@ -8,10 +8,13 @@
 	},
 	"scripts": {
 		"typecheck": "bunx tsc --noEmit",
+		"test": "bun test ./src",
 		"analyze": "bun run ./src/analyze-performance.ts"
 	},
 	"dependencies": {
+		"@ccflare/config": "workspace:*",
 		"@ccflare/core": "workspace:*",
-		"@ccflare/logger": "workspace:*"
+		"@ccflare/logger": "workspace:*",
+		"@ccflare/types": "workspace:*"
 	}
 }

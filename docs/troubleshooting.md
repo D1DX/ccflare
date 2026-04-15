@@ -125,7 +125,7 @@ curl http://localhost:8080/api/accounts | jq '.[] | {name, rate_limit_status, ra
 
 2. Check rate limit reset times in the dashboard:
    ```
-   http://localhost:8080/dashboard
+   http://localhost:8080
    ```
 
 3. Monitor account-specific rate limits:
@@ -484,12 +484,6 @@ Environment variables override config file settings:
    grep "Fetching latest pricing" /tmp/ccflare-logs/app.log
    ```
 
-4. Force offline pricing mode:
-   ```bash
-   export CF_PRICING_OFFLINE=1
-   bun start
-   ```
-
 ## Logging and Debugging
 
 ### Log File Locations
@@ -761,7 +755,6 @@ grep "\[Server\]" /tmp/ccflare-logs/app.log
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `CF_PRICING_OFFLINE` | Use offline pricing data | `0` | `1` |
 | `CF_PRICING_REFRESH_HOURS` | Hours between pricing updates | `24` | `12` |
 
 ### Usage Examples

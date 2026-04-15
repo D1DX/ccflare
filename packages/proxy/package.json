@@ -7,16 +7,17 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
-		"typecheck": "bunx tsc --noEmit"
+		"typecheck": "bunx tsc --noEmit",
+		"test": "bun test ./src"
 	},
 	"dependencies": {
-		"@ccflare/agents": "workspace:*",
 		"@ccflare/config": "workspace:*",
 		"@ccflare/core": "workspace:*",
 		"@ccflare/database": "workspace:*",
+		"@ccflare/http": "workspace:*",
 		"@ccflare/logger": "workspace:*",
 		"@ccflare/providers": "workspace:*",
-		"@ccflare/ui-common": "workspace:*",
+		"@ccflare/types": "workspace:*",
 		"@dqbd/tiktoken": "^1.0.21"
 	}
 }

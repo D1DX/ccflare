@@ -1,14 +1,14 @@
-// Re-export the DatabaseOperations class
-import { DatabaseOperations } from "./database-operations";
-export { DatabaseOperations };
-
-// Re-export other utilities
+export {
+	type BuildAnalyticsQueryInput,
+	type BuiltAnalyticsQuery,
+	buildAnalyticsQuery,
+} from "./analytics-query";
+export { analyzeDatabasePerformance } from "./analyze-performance";
 export { AsyncDbWriter } from "./async-writer";
-export type { RuntimeConfig } from "./database-operations";
+export { DatabaseOperations } from "./database-operations";
 export { DatabaseFactory } from "./factory";
 export { ensureSchema, runMigrations } from "./migrations";
+export { type AccountRow, toAccount } from "./models/account-row";
+export { type RequestRow, toRequest } from "./models/request-row";
 export { resolveDbPath } from "./paths";
 export { analyzeIndexUsage } from "./performance-indexes";
-
-// Re-export repository types
-export type { StatsRepository } from "./repositories/stats.repository";

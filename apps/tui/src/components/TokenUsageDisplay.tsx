@@ -1,6 +1,6 @@
-import type { RequestSummary } from "@ccflare/tui-core";
-import { processTokenUsage } from "@ccflare/ui-common";
-import { Box, Text } from "ink";
+import { processTokenUsage } from "@ccflare/ui";
+import type { RequestSummary } from "../core";
+import { C } from "../theme.ts";
 
 interface TokenUsageDisplayProps {
 	summary: RequestSummary;
@@ -10,77 +10,81 @@ export function TokenUsageDisplay({ summary }: TokenUsageDisplayProps) {
 	const usage = processTokenUsage(summary);
 
 	if (!usage.hasData) {
-		return (
-			<Box flexDirection="column" marginTop={1}>
-				<Text dimColor>No token usage data available</Text>
-			</Box>
-		);
+		return <text fg={C.muted}>No token usage data available</text>;
 	}
 
 	const { sections } = usage;
 
 	return (
-		<Box flexDirection="column" marginTop={1}>
-			<Text bold>Token Usage:</Text>
-			<Box marginLeft={2} flexDirection="column">
+		<box flexDirection="column">
+			<text fg={C.text}>
+				<strong>Token Usage</strong>
+			</text>
+			<box marginLeft={2} flexDirection="column" marginTop={1}>
 				{sections.inputTokens && (
-					<Box>
-						<Text>{sections.inputTokens.label}: </Text>
-						<Text color="yellow" bold>
-							{sections.inputTokens.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>{sections.inputTokens.label}:</text>
+						<text fg={C.chart1}>
+							<strong>{sections.inputTokens.value}</strong>
+						</text>
+					</box>
 				)}
-
 				{sections.outputTokens && (
-					<Box>
-						<Text>{sections.outputTokens.label}: </Text>
-						<Text color="yellow" bold>
-							{sections.outputTokens.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>{sections.outputTokens.label}:</text>
+						<text fg={C.chart1}>
+							<strong>{sections.outputTokens.value}</strong>
+						</text>
+					</box>
 				)}
-
+				{sections.reasoningTokens && (
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>{sections.reasoningTokens.label}:</text>
+						<text fg={C.chart3}>
+							<strong>{sections.reasoningTokens.value}</strong>
+						</text>
+					</box>
+				)}
 				{sections.cacheReadTokens && (
-					<Box>
-						<Text>{sections.cacheReadTokens.label}: </Text>
-						<Text color="cyan" bold>
-							{sections.cacheReadTokens.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>{sections.cacheReadTokens.label}:</text>
+						<text fg={C.chart2}>
+							<strong>{sections.cacheReadTokens.value}</strong>
+						</text>
+					</box>
 				)}
-
 				{sections.cacheCreationTokens && (
-					<Box>
-						<Text>{sections.cacheCreationTokens.label}: </Text>
-						<Text color="cyan" bold>
-							{sections.cacheCreationTokens.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>{sections.cacheCreationTokens.label}:</text>
+						<text fg={C.chart2}>
+							<strong>{sections.cacheCreationTokens.value}</strong>
+						</text>
+					</box>
 				)}
 
-				<Box marginTop={1}>
-					<Text>─────────────────────</Text>
-				</Box>
+				<text fg={C.muted}>─────────────────────</text>
 
 				{sections.totalTokens && (
-					<Box>
-						<Text bold>{sections.totalTokens.label}: </Text>
-						<Text color="green" bold>
-							{sections.totalTokens.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>
+							<strong>{sections.totalTokens.label}:</strong>
+						</text>
+						<text fg={C.success}>
+							<strong>{sections.totalTokens.value}</strong>
+						</text>
+					</box>
 				)}
-
 				{sections.cost && (
-					<Box>
-						<Text bold>{sections.cost.label}: </Text>
-						<Text color="green" bold>
-							{sections.cost.value}
-						</Text>
-					</Box>
+					<box flexDirection="row" gap={1}>
+						<text fg={C.dim}>
+							<strong>{sections.cost.label}:</strong>
+						</text>
+						<text fg={C.success}>
+							<strong>{sections.cost.value}</strong>
+						</text>
+					</box>
 				)}
-			</Box>
-		</Box>
+			</box>
+		</box>
 	);
 }

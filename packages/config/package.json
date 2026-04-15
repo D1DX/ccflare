@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@ccflare/core": "workspace:*",
-		"@ccflare/logger": "workspace:*"
+		"@ccflare/logger": "workspace:*",
+		"@ccflare/types": "workspace:*"
 	}
 }

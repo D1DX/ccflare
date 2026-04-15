@@ -2,14 +2,18 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
-	DEFAULT_AGENT_MODEL,
 	DEFAULT_STRATEGY,
 	isValidStrategy,
 	NETWORK,
-	type StrategyName,
 	TIME_CONSTANTS,
 } from "@ccflare/core";
 import { Logger } from "@ccflare/logger";
+import {
+	isFiniteNumber,
+	isLbStrategy,
+	isRecord,
+	type StrategyName,
+} from "@ccflare/types";
 import { resolveConfigPath } from "./paths";
 
 const log = new Logger("Config");
@@ -29,10 +33,66 @@ export interface ConfigData {
 	retry_backoff?: number;
 	session_duration_ms?: number;
 	port?: number;
-	default_agent_model?: string;
 	data_retention_days?: number;
 	request_retention_days?: number;
 	[key: string]: string | number | boolean | undefined;
+}
+
+function parseNumber(value: string | undefined): number | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function sanitizeConfigData(value: unknown): ConfigData {
+	if (!isRecord(value)) {
+		return {};
+	}
+
+	const sanitized: ConfigData = {};
+
+	for (const [key, entry] of Object.entries(value)) {
+		if (
+			typeof entry === "string" ||
+			typeof entry === "boolean" ||
+			isFiniteNumber(entry)
+		) {
+			sanitized[key] = entry;
+		}
+	}
+
+	if (!isLbStrategy(String(sanitized.lb_strategy ?? ""))) {
+		delete sanitized.lb_strategy;
+	}
+
+	const numericKeys = [
+		"retry_attempts",
+		"retry_delay_ms",
+		"retry_backoff",
+		"session_duration_ms",
+		"port",
+		"data_retention_days",
+		"request_retention_days",
+	] as const;
+
+	for (const key of numericKeys) {
+		const entry = sanitized[key];
+		if (entry !== undefined && !isFiniteNumber(entry)) {
+			delete sanitized[key];
+		}
+	}
+
+	if (
+		sanitized.client_id !== undefined &&
+		typeof sanitized.client_id !== "string"
+	) {
+		delete sanitized.client_id;
+	}
+
+	return sanitized;
 }
 
 export class Config extends EventEmitter {
@@ -49,7 +109,11 @@ export class Config extends EventEmitter {
 		if (existsSync(this.configPath)) {
 			try {
 				const content = readFileSync(this.configPath, "utf8");
-				this.data = JSON.parse(content) as ConfigData;
+				this.data = sanitizeConfigData(JSON.parse(content));
+				if ("default_agent_model" in this.data) {
+					delete this.data.default_agent_model;
+					this.saveConfig();
+				}
 			} catch (error) {
 				log.error(`Failed to parse config file: ${error}`);
 				this.data = {};
@@ -124,27 +188,6 @@ export class Config extends EventEmitter {
 		this.set("lb_strategy", strategy);
 	}
 
-	getDefaultAgentModel(): string {
-		// First check environment variable
-		const envModel = process.env.DEFAULT_AGENT_MODEL;
-		if (envModel) {
-			return envModel;
-		}
-
-		// Then check config file
-		const configModel = this.data.default_agent_model;
-		if (configModel) {
-			return configModel;
-		}
-
-		// Default to the centralized default agent model
-		return DEFAULT_AGENT_MODEL;
-	}
-
-	setDefaultAgentModel(model: string): void {
-		this.set("default_agent_model", model);
-	}
-
 	private clamp(n: number, min: number, max: number): number {
 		return Math.max(min, Math.min(max, n));
 	}
@@ -186,7 +229,6 @@ export class Config extends EventEmitter {
 		return {
 			...this.data,
 			lb_strategy: this.getStrategy(),
-			default_agent_model: this.getDefaultAgentModel(),
 			data_retention_days: this.getDataRetentionDays(),
 			request_retention_days: this.getRequestRetentionDays(),
 		};
@@ -209,20 +251,25 @@ export class Config extends EventEmitter {
 		if (process.env.CLIENT_ID) {
 			defaults.clientId = process.env.CLIENT_ID;
 		}
-		if (process.env.RETRY_ATTEMPTS) {
-			defaults.retry.attempts = parseInt(process.env.RETRY_ATTEMPTS);
+		const retryAttempts = parseNumber(process.env.RETRY_ATTEMPTS);
+		if (retryAttempts !== undefined) {
+			defaults.retry.attempts = retryAttempts;
 		}
-		if (process.env.RETRY_DELAY_MS) {
-			defaults.retry.delayMs = parseInt(process.env.RETRY_DELAY_MS);
+		const retryDelayMs = parseNumber(process.env.RETRY_DELAY_MS);
+		if (retryDelayMs !== undefined) {
+			defaults.retry.delayMs = retryDelayMs;
 		}
-		if (process.env.RETRY_BACKOFF) {
-			defaults.retry.backoff = parseFloat(process.env.RETRY_BACKOFF);
+		const retryBackoff = parseNumber(process.env.RETRY_BACKOFF);
+		if (retryBackoff !== undefined) {
+			defaults.retry.backoff = retryBackoff;
 		}
-		if (process.env.SESSION_DURATION_MS) {
-			defaults.sessionDurationMs = parseInt(process.env.SESSION_DURATION_MS);
+		const sessionDurationMs = parseNumber(process.env.SESSION_DURATION_MS);
+		if (sessionDurationMs !== undefined) {
+			defaults.sessionDurationMs = sessionDurationMs;
 		}
-		if (process.env.PORT) {
-			defaults.port = parseInt(process.env.PORT);
+		const port = parseNumber(process.env.PORT);
+		if (port !== undefined) {
+			defaults.port = port;
 		}
 
 		// Override with config file settings if present
@@ -249,7 +296,5 @@ export class Config extends EventEmitter {
 	}
 }
 
-// Re-export types
-export type { StrategyName } from "@ccflare/core";
 export { resolveConfigPath } from "./paths";
 export { getPlatformConfigDir } from "./paths-common";

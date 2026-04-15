@@ -13,23 +13,22 @@
 		"postpublish": "chmod +x dist/ccflare"
 	},
 	"dependencies": {
-		"@ccflare/tui-core": "workspace:*",
-		"@ccflare/ui-common": "workspace:*",
-		"@ccflare/database": "workspace:*",
-		"@ccflare/core-di": "workspace:*",
 		"@ccflare/config": "workspace:*",
+		"@ccflare/core": "workspace:*",
+		"@ccflare/database": "workspace:*",
 		"@ccflare/logger": "workspace:*",
-		"@ccflare/server": "workspace:*",
-		"ink": "^6.0.0",
-		"ink-select-input": "^6.0.0",
-		"ink-spinner": "^5.0.0",
-		"ink-text-input": "^6.0.0",
+		"@ccflare/oauth-flow": "workspace:*",
+		"@ccflare/runtime-server": "workspace:*",
+		"@ccflare/types": "workspace:*",
+		"@ccflare/ui": "workspace:*",
+		"@opentui/core": "^0.1.98",
+		"@opentui/react": "^0.1.98",
+		"open": "^10.0.0",
 		"react": "^19.0.0"
 	},
 	"devDependencies": {
 		"@types/react": "^19.0.0",
-		"@types/node": "^20.0.0",
-		"react-devtools-core": "^5.0.0"
+		"@types/node": "^20.0.0"
 	},
 	"files": [
 		"dist"

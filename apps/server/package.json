@@ -11,14 +11,14 @@
 	},
 	"dependencies": {
 		"@ccflare/core": "workspace:*",
-		"@ccflare/core-di": "workspace:*",
 		"@ccflare/database": "workspace:*",
 		"@ccflare/config": "workspace:*",
+		"@ccflare/runtime-server": "workspace:*",
 		"@ccflare/logger": "workspace:*",
-		"@ccflare/load-balancer": "workspace:*",
 		"@ccflare/proxy": "workspace:*",
-		"@ccflare/dashboard-web": "workspace:*",
-		"@ccflare/http-api": "workspace:*",
-		"@ccflare/types": "workspace:*"
+		"@ccflare/providers": "workspace:*",
+		"@ccflare/types": "workspace:*",
+		"@ccflare/api": "workspace:*",
+		"@ccflare/http": "workspace:*"
 	}
 }

@@ -1,5 +1,5 @@
 import type { Account, RequestMeta } from "@ccflare/types";
-import type { ProxyContext } from "./proxy-types";
+import type { ResolvedProxyContext } from "./proxy-types";
 
 /**
  * Gets accounts ordered by the load balancing strategy
@@ -9,13 +9,10 @@ import type { ProxyContext } from "./proxy-types";
  */
 export function getOrderedAccounts(
 	meta: RequestMeta,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Account[] {
-	const allAccounts = ctx.dbOps.getAllAccounts();
-	// Filter accounts by provider
-	const providerAccounts = allAccounts.filter(
-		(account) =>
-			account.provider === ctx.provider.name || account.provider === null,
+	const providerAccounts = ctx.dbOps.getAvailableAccountsByProvider(
+		ctx.providerName,
 	);
 	return ctx.strategy.select(providerAccounts, meta);
 }
@@ -28,7 +25,7 @@ export function getOrderedAccounts(
  */
 export function selectAccountsForRequest(
 	meta: RequestMeta,
-	ctx: ProxyContext,
+	ctx: ResolvedProxyContext,
 ): Account[] {
 	return getOrderedAccounts(meta, ctx);
 }

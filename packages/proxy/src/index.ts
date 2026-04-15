@@ -1,16 +1,8 @@
-// Re-export provider-related types and functions from @ccflare/providers
-export type {
-	Provider,
-	RateLimitInfo,
-	TokenRefreshResult,
-} from "@ccflare/providers";
-export {
-	getProvider,
-	listProviders,
-	registerProvider,
-} from "@ccflare/providers";
+export { waitForProxyBackgroundTasks } from "./background-tasks";
+export { handleCompatibilityProxy } from "./compat/index";
 export {
 	getUsageWorker,
+	getUsageWorkerHealth,
 	handleProxy,
 	type ProxyContext,
 	terminateUsageWorker,
@@ -19,11 +11,24 @@ export {
 	forwardToClient,
 	type ResponseHandlerOptions,
 } from "./response-handler";
-export type { ProxyRequest, ProxyResponse } from "./types";
+export { SessionStrategy } from "./strategies";
+export type { UsageWorkerHealthSnapshot } from "./usage-worker";
+export {
+	handleWebSocketUpgradeRequest,
+	isWebSocketUpgradeRequest,
+	type WebSocketProxyData,
+	type WebSocketProxyPlan,
+	type WebSocketProxySession,
+	websocketProxyHandler,
+} from "./websocket-proxy";
 export type {
+	AckMessage,
 	ChunkMessage,
 	ControlMessage,
 	EndMessage,
+	IncomingWorkerMessage,
+	OutgoingWorkerMessage,
+	ReadyMessage,
+	ShutdownCompleteMessage,
 	StartMessage,
-	WorkerMessage,
 } from "./worker-messages";

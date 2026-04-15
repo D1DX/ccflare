@@ -1,262 +1,191 @@
-import { getModelShortName } from "@ccflare/core";
-import * as tuiCore from "@ccflare/tui-core";
-import { formatCost, formatNumber, formatPercentage } from "@ccflare/ui-common";
-import { Box, Text, useInput } from "ink";
-import SelectInput from "ink-select-input";
-import Spinner from "ink-spinner";
+import { formatCost, getModelShortName } from "@ccflare/core";
+import type { TimeRange } from "@ccflare/types";
+import {
+	formatNumber,
+	formatPercentage,
+	getSuccessRateTermColor,
+	getTimeRangeLabel,
+} from "@ccflare/ui";
+import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useState } from "react";
-import { BarChart, LineChart, PieChart, SparklineChart } from "./charts";
+import * as tuiCore from "../core";
+import { C } from "../theme.ts";
+import { BarChart } from "./charts/BarChart.tsx";
+import { LineChart } from "./charts/LineChart.tsx";
+import { PieChart } from "./charts/PieChart.tsx";
+import { SparklineChart } from "./charts/SparklineChart.tsx";
 
 interface AnalyticsScreenProps {
-	onBack: () => void;
+	refreshKey: number;
 }
 
-type TimeRange = "1h" | "6h" | "24h" | "7d";
+type TuiTimeRange = Exclude<TimeRange, "30d">;
 type ChartView = "overview" | "tokens" | "performance" | "costs" | "models";
 
-const TIME_RANGE_LABELS: Record<TimeRange, string> = {
-	"1h": "Last Hour",
-	"6h": "Last 6 Hours",
-	"24h": "Last 24 Hours",
-	"7d": "Last 7 Days",
-};
+const TIME_RANGES: { key: string; value: TuiTimeRange; label: string }[] = [
+	{ key: "1", value: "1h", label: "1h" },
+	{ key: "2", value: "6h", label: "6h" },
+	{ key: "3", value: "24h", label: "24h" },
+	{ key: "4", value: "7d", label: "7d" },
+];
 
-export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
-	const [timeRange, setTimeRange] = useState<TimeRange>("24h");
+const VIEW_MODES: { key: string; value: ChartView; label: string }[] = [
+	{ key: "o", value: "overview", label: "Overview" },
+	{ key: "t", value: "tokens", label: "Tokens" },
+	{ key: "p", value: "performance", label: "Perf" },
+	{ key: "c", value: "costs", label: "Costs" },
+	{ key: "d", value: "models", label: "Models" },
+];
+
+interface TimeSeriesPoint {
+	time: string;
+	requests: number;
+	tokens: number;
+	cost: number;
+	responseTime: number;
+	errorRate: number;
+	cacheHitRate: number;
+	successRate: number;
+}
+
+export function AnalyticsScreen({ refreshKey }: AnalyticsScreenProps) {
+	const [timeRange, setTimeRange] = useState<TuiTimeRange>("24h");
 	const [chartView, setChartView] = useState<ChartView>("overview");
 	const [stats, setStats] = useState<tuiCore.Stats | null>(null);
 	const [loading, setLoading] = useState(true);
-	interface TimeSeriesDataPoint {
-		time: string;
-		requests: number;
-		tokens: number;
-		cost: number;
-		responseTime: number;
-		errorRate: number;
-		cacheHitRate: number;
-		successRate: number;
-	}
+	const [timeSeries, setTimeSeries] = useState<TimeSeriesPoint[]>([]);
+	const [models, setModels] = useState<tuiCore.ModelDistribution[]>([]);
 
-	const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesDataPoint[]>(
-		[],
-	);
-	const [showMenu, setShowMenu] = useState(false);
-	const [modelDistribution, setModelDistribution] = useState<
-		tuiCore.ModelDistribution[]
-	>([]);
-
-	useInput((input, key) => {
-		if (key.escape) {
-			if (showMenu) {
-				setShowMenu(false);
-			} else {
-				onBack();
+	useKeyboard((key) => {
+		// Time range shortcuts
+		for (const tr of TIME_RANGES) {
+			if (key.name === tr.key) {
+				setTimeRange(tr.value);
+				return;
 			}
 		}
-		if (input === "q" && !showMenu) {
-			onBack();
-		}
-		if (input === "r" && !showMenu) {
-			loadData();
-		}
-		if (input === "m" && !showMenu) {
-			setShowMenu(true);
-		}
-		// Time range shortcuts
-		if (!showMenu) {
-			if (input === "1") setTimeRange("1h");
-			if (input === "2") setTimeRange("6h");
-			if (input === "3") setTimeRange("24h");
-			if (input === "4") setTimeRange("7d");
-			// View shortcuts
-			if (input === "o") setChartView("overview");
-			if (input === "t") setChartView("tokens");
-			if (input === "p") setChartView("performance");
-			if (input === "c") setChartView("costs");
-			if (input === "d") setChartView("models");
+		// View mode shortcuts
+		for (const vm of VIEW_MODES) {
+			if (key.name === vm.key) {
+				setChartView(vm.value);
+				return;
+			}
 		}
 	});
 
 	const loadData = useCallback(async () => {
 		try {
 			setLoading(true);
-			// Get basic stats
-			const data = await tuiCore.getStats();
-			setStats(data);
+			const [s, analytics] = await Promise.all([
+				tuiCore.getStats(),
+				tuiCore.getAnalytics(timeRange),
+			]);
+			setStats(s);
+			setModels(analytics.modelDistribution);
 
-			// Get analytics with time series data
-			const analytics = await tuiCore.getAnalytics(timeRange);
-
-			// Transform time series data for display
-			const transformedTimeSeries = analytics.timeSeries.map((point) => {
-				const time = new Date(point.time);
+			const transformed = analytics.timeSeries.map((pt) => {
+				const t = new Date(pt.time);
 				return {
 					time:
 						timeRange === "7d"
-							? time.toLocaleDateString("en", { weekday: "short" })
-							: time.toLocaleTimeString("en", {
+							? t.toLocaleDateString("en", { weekday: "short" })
+							: t.toLocaleTimeString("en", {
 									hour: "2-digit",
 									minute: "2-digit",
 								}),
-					requests: point.requests,
-					tokens: point.tokens,
-					cost: point.cost,
-					responseTime: point.responseTime,
-					errorRate: point.errorRate,
-					cacheHitRate: point.cacheHitRate,
-					successRate: point.successRate,
+					requests: pt.requests,
+					tokens: pt.tokens,
+					cost: pt.cost,
+					responseTime: pt.responseTime,
+					errorRate: pt.errorRate,
+					cacheHitRate: pt.cacheHitRate,
+					successRate: pt.successRate,
 				};
 			});
-
-			setTimeSeriesData(transformedTimeSeries);
+			setTimeSeries(transformed);
 			setLoading(false);
-		} catch (_error) {
+		} catch {
 			setLoading(false);
 		}
 	}, [timeRange]);
 
 	useEffect(() => {
 		loadData();
-		const interval = setInterval(loadData, 30000); // Refresh every 30 seconds
+		const interval = setInterval(loadData, 30000);
 		return () => clearInterval(interval);
 	}, [loadData]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey triggers manual refresh
 	useEffect(() => {
-		if (!loading) {
-			tuiCore.getAnalytics(timeRange).then((analytics) => {
-				setModelDistribution(analytics.modelDistribution);
-			});
-		}
-	}, [timeRange, loading]);
+		loadData();
+	}, [refreshKey, loadData]);
 
 	if (loading || !stats) {
 		return (
-			<Box flexDirection="column" padding={1}>
-				<Text color="cyan" bold>
-					📈 Analytics Dashboard
-				</Text>
-				<Box marginTop={1}>
-					<Text color="green">
-						<Spinner type="dots" />
-					</Text>
-					<Text> Loading analytics data...</Text>
-				</Box>
-			</Box>
+			<box padding={1}>
+				<text fg={C.dim}>Loading analytics...</text>
+			</box>
 		);
 	}
 
-	// Menu for selecting time range
-	if (showMenu) {
-		const menuItems = [
-			{ label: "📊 Overview", value: "overview" },
-			{ label: "🪙 Token Usage", value: "tokens" },
-			{ label: "⚡ Performance", value: "performance" },
-			{ label: "💰 Cost Analysis", value: "costs" },
-			{ label: "🤖 Model Distribution", value: "models" },
-			{ label: "← Back", value: "back" },
-		];
+	const reqSparkline = timeSeries.map((d) => d.requests);
+	const tokenSparkline = timeSeries.map((d) => d.tokens);
+	const costSparkline = timeSeries.map((d) => d.cost);
+	const respData = timeSeries.map((d) => ({ x: d.time, y: d.responseTime }));
 
-		return (
-			<Box flexDirection="column" padding={1}>
-				<Text color="cyan" bold>
-					Select Analytics View
-				</Text>
-				<Box marginTop={1}>
-					<SelectInput
-						items={menuItems}
-						onSelect={(item) => {
-							if (item.value === "back") {
-								setShowMenu(false);
-							} else {
-								setChartView(item.value as ChartView);
-								setShowMenu(false);
-							}
-						}}
-					/>
-				</Box>
-			</Box>
-		);
-	}
-
-	// Prepare data for charts
-	const requestSparkline = timeSeriesData.map((d) => d.requests);
-	const tokenSparkline = timeSeriesData.map((d) => d.tokens);
-	const costSparkline = timeSeriesData.map((d) => d.cost);
-	const responseTimeData = timeSeriesData.map((d) => ({
-		x: d.time,
-		y: d.responseTime,
+	const modelData = models.slice(0, 5).map((m, i) => ({
+		label: m.model,
+		value: m.count,
+		color: [C.chart1, C.chart2, C.chart3, C.chart4, C.chart5][i % 5],
 	}));
 
-	// Model distribution for pie chart
-	const modelData = modelDistribution.slice(0, 3).map((model, index) => ({
-		label: model.model,
-		value: model.count,
-		color: ["magenta", "cyan", "yellow"][index] as
-			| "magenta"
-			| "cyan"
-			| "yellow",
-	}));
-
-	// Account performance for bar chart
-	const accountBarData = stats.accounts.map((account) => ({
-		label: account.name,
-		value: account.requestCount,
-		color:
-			account.successRate >= 95
-				? ("green" as const)
-				: account.successRate >= 80
-					? ("yellow" as const)
-					: ("red" as const),
+	const accountBarData = stats.accounts.map((a) => ({
+		label: a.name,
+		value: a.requestCount,
+		color: getSuccessRateTermColor(a.successRate),
 	}));
 
 	const renderChart = () => {
 		switch (chartView) {
 			case "overview":
 				return (
-					<Box flexDirection="column">
-						<Box marginBottom={1}>
-							<Text bold underline>
-								Request Volume & Performance
-							</Text>
-						</Box>
-
-						{/* Sparklines */}
-						<Box flexDirection="column" marginBottom={2}>
+					<box flexDirection="column" gap={1}>
+						<text fg={C.text}>
+							<strong>Request Volume & Performance</strong>
+						</text>
+						<box flexDirection="column">
 							<SparklineChart
-								data={requestSparkline}
+								data={reqSparkline}
 								label="Requests"
-								color="cyan"
-								showCurrent={true}
+								color={C.chart2}
+								showCurrent
 							/>
 							<SparklineChart
 								data={tokenSparkline}
 								label="Tokens  "
-								color="yellow"
-								showCurrent={true}
+								color={C.chart1}
+								showCurrent
 							/>
 							<SparklineChart
 								data={costSparkline}
 								label="Cost    "
-								color="green"
-								showCurrent={true}
+								color={C.success}
+								showCurrent
 							/>
-						</Box>
-
-						{/* Response time line chart */}
+						</box>
 						<LineChart
-							data={responseTimeData.slice(-20)}
+							data={respData.slice(-20)}
 							title="Response Time (ms)"
 							height={8}
 							width={50}
-							color="magenta"
+							color={C.chart3}
 						/>
-					</Box>
+					</box>
 				);
 
 			case "tokens":
 				return (
-					<Box flexDirection="column">
-						{/* Token breakdown bar chart */}
+					<box flexDirection="column" gap={1}>
 						{stats.tokenDetails && (
 							<BarChart
 								title="Token Usage Breakdown"
@@ -264,138 +193,136 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 									{
 										label: "Input",
 										value: stats.tokenDetails.inputTokens,
-										color: "yellow",
+										color: C.chart1,
 									},
 									{
 										label: "Cache Read",
 										value: stats.tokenDetails.cacheReadInputTokens,
-										color: "cyan",
+										color: C.chart2,
 									},
 									{
 										label: "Cache Create",
 										value: stats.tokenDetails.cacheCreationInputTokens,
-										color: "blue",
+										color: C.info,
 									},
 									{
 										label: "Output",
 										value: stats.tokenDetails.outputTokens,
-										color: "green",
+										color: C.success,
 									},
 								]}
 								width={40}
-								showValues={true}
+								showValues
 							/>
 						)}
-
-						<Box marginTop={2}>
-							<Text bold>Token Efficiency Metrics</Text>
-							<Box marginTop={1}>
-								<Text>Avg tokens/request: </Text>
-								<Text color="yellow" bold>
-									{formatNumber(
-										stats.totalRequests > 0
-											? Math.round(stats.totalTokens / stats.totalRequests)
-											: 0,
-									)}
-								</Text>
-							</Box>
-							<Box>
-								<Text>Cache hit rate: </Text>
-								<Text color="cyan" bold>
-									{formatPercentage(
-										stats.tokenDetails
-											? (stats.tokenDetails.cacheReadInputTokens /
-													stats.tokenDetails.inputTokens) *
-													100
-											: 0,
-									)}
-								</Text>
-							</Box>
-						</Box>
-					</Box>
+						<box flexDirection="column" marginTop={1}>
+							<text fg={C.text}>
+								<strong>Token Efficiency</strong>
+							</text>
+							<box flexDirection="row" gap={1} marginTop={1}>
+								<text fg={C.dim}>Avg tokens/req:</text>
+								<text fg={C.chart1}>
+									<strong>
+										{formatNumber(
+											stats.totalRequests > 0
+												? Math.round(stats.totalTokens / stats.totalRequests)
+												: 0,
+										)}
+									</strong>
+								</text>
+							</box>
+							{stats.tokenDetails && (
+								<box flexDirection="row" gap={1}>
+									<text fg={C.dim}>Cache hit rate:</text>
+									<text fg={C.chart2}>
+										<strong>
+											{formatPercentage(
+												stats.tokenDetails.inputTokens > 0
+													? (stats.tokenDetails.cacheReadInputTokens /
+															stats.tokenDetails.inputTokens) *
+															100
+													: 0,
+											)}
+										</strong>
+									</text>
+								</box>
+							)}
+						</box>
+					</box>
 				);
 
 			case "performance":
 				return (
-					<Box flexDirection="column">
-						{/* Account performance bar chart */}
+					<box flexDirection="column" gap={1}>
 						<BarChart
 							title="Account Performance (Requests)"
 							data={accountBarData}
 							width={35}
-							showValues={true}
+							showValues
 						/>
-
-						<Box marginTop={2}>
-							<Text bold underline>
-								Performance Metrics
-							</Text>
-							<Box marginTop={1}>
-								<Text>Success Rate: </Text>
-								<Text
-									color={
-										stats.successRate >= 95
-											? "green"
-											: stats.successRate >= 80
-												? "yellow"
-												: "red"
-									}
-									bold
-								>
-									{formatPercentage(stats.successRate)}
-								</Text>
-							</Box>
-							<Box>
-								<Text>Avg Response: </Text>
-								<Text color="magenta" bold>
-									{formatNumber(stats.avgResponseTime)}ms
-								</Text>
-							</Box>
-						</Box>
-					</Box>
+						<box flexDirection="column" marginTop={1}>
+							<text fg={C.text}>
+								<strong>Performance Metrics</strong>
+							</text>
+							<box flexDirection="row" gap={1} marginTop={1}>
+								<text fg={C.dim}>Success Rate:</text>
+								<text fg={getSuccessRateTermColor(stats.successRate)}>
+									<strong>{formatPercentage(stats.successRate)}</strong>
+								</text>
+							</box>
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Avg Response:</text>
+								<text fg={C.chart3}>
+									<strong>{formatNumber(stats.avgResponseTime)}ms</strong>
+								</text>
+							</box>
+							{stats.avgTokensPerSecond !== null && (
+								<box flexDirection="row" gap={1}>
+									<text fg={C.dim}>Output Speed:</text>
+									<text fg={C.chart2}>
+										<strong>
+											{formatNumber(stats.avgTokensPerSecond)} tok/s
+										</strong>
+									</text>
+								</box>
+							)}
+						</box>
+					</box>
 				);
 
 			case "costs":
 				return (
-					<Box flexDirection="column">
-						<Box marginBottom={1}>
-							<Text bold underline>
-								Cost Analysis
-							</Text>
-						</Box>
-
-						{/* Cost trend sparkline */}
-						<Box marginBottom={2}>
-							<SparklineChart
-								data={costSparkline}
-								label="Cost Trend"
-								color="green"
-								showMinMax={true}
-								showCurrent={true}
-							/>
-						</Box>
-
-						{/* Cost breakdown */}
-						<Box flexDirection="column">
-							<Box>
-								<Text>Total Cost: </Text>
-								<Text color="green" bold>
-									{formatCost(stats.totalCostUsd)}
-								</Text>
-							</Box>
-							<Box>
-								<Text>Avg per request: </Text>
-								<Text color="yellow">
+					<box flexDirection="column" gap={1}>
+						<text fg={C.text}>
+							<strong>Cost Analysis</strong>
+						</text>
+						<SparklineChart
+							data={costSparkline}
+							label="Cost Trend"
+							color={C.success}
+							showMinMax
+							showCurrent
+						/>
+						<box flexDirection="column" marginTop={1}>
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Total Cost:</text>
+								<text fg={C.success}>
+									<strong>{formatCost(stats.totalCostUsd)}</strong>
+								</text>
+							</box>
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Avg per request:</text>
+								<text fg={C.chart1}>
 									{formatCost(
 										stats.totalRequests > 0
 											? stats.totalCostUsd / stats.totalRequests
 											: 0,
 									)}
-								</Text>
-							</Box>
-							<Box>
-								<Text>Projected daily: </Text>
-								<Text dimColor>
+								</text>
+							</box>
+							<box flexDirection="row" gap={1}>
+								<text fg={C.dim}>Projected daily:</text>
+								<text fg={C.muted}>
 									{formatCost(
 										stats.totalCostUsd *
 											(24 /
@@ -407,78 +334,82 @@ export function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 															? 24
 															: 168)),
 									)}
-								</Text>
-							</Box>
-						</Box>
-					</Box>
+								</text>
+							</box>
+						</box>
+					</box>
 				);
 
 			case "models":
 				return (
-					<Box flexDirection="column">
-						{/* Model distribution pie chart */}
-						<PieChart
-							title="Model Distribution"
-							data={modelData}
-							size="medium"
-							showLegend={true}
-						/>
-
-						<Box marginTop={2}>
-							<Text bold>Model Performance</Text>
-							<Box flexDirection="column" marginTop={1}>
-								{modelDistribution.slice(0, 5).map((model) => {
-									const shortName = getModelShortName(model.model);
-									const color = shortName.includes("opus")
-										? "magenta"
-										: shortName.includes("sonnet")
-											? "cyan"
-											: "yellow";
+					<box flexDirection="column" gap={1}>
+						<PieChart title="Model Distribution" data={modelData} showLegend />
+						<box flexDirection="column" marginTop={1}>
+							<text fg={C.text}>
+								<strong>Model Performance</strong>
+							</text>
+							<box flexDirection="column" marginTop={1}>
+								{models.slice(0, 5).map((model) => {
+									const short = getModelShortName(model.model);
+									const color = short.includes("opus")
+										? C.chart3
+										: short.includes("sonnet")
+											? C.chart2
+											: C.chart1;
 									return (
-										<Box key={model.model}>
-											<Text>{model.model}: </Text>
-											<Text color={color}>
+										<box key={model.model} flexDirection="row" gap={1}>
+											<text fg={C.dim}>{model.model}:</text>
+											<text fg={color}>
 												{formatNumber(model.count)} (
 												{formatPercentage(model.percentage)})
-											</Text>
-										</Box>
+											</text>
+										</box>
 									);
 								})}
-							</Box>
-						</Box>
-					</Box>
+							</box>
+						</box>
+					</box>
 				);
-
-			default:
-				return null;
 		}
 	};
 
 	return (
-		<Box flexDirection="column" padding={1}>
-			{/* Header */}
-			<Box marginBottom={1} justifyContent="space-between">
-				<Text color="cyan" bold>
-					📈 Analytics Dashboard - {TIME_RANGE_LABELS[timeRange]}
-				</Text>
-				<Text dimColor> View: {chartView}</Text>
-			</Box>
+		<scrollbox flexGrow={1} focused>
+			<box flexDirection="column" padding={1} gap={1}>
+				{/* Controls bar */}
+				<box flexDirection="row" gap={2}>
+					<text fg={C.dim}>
+						Time:{" "}
+						{TIME_RANGES.map((tr) => (
+							<span
+								key={tr.key}
+								fg={tr.value === timeRange ? C.accent : C.muted}
+							>
+								[{tr.key}]{tr.label}{" "}
+							</span>
+						))}
+					</text>
+					<text fg={C.dim}>
+						View:{" "}
+						{VIEW_MODES.map((vm) => (
+							<span
+								key={vm.key}
+								fg={vm.value === chartView ? C.accent : C.muted}
+							>
+								[{vm.key}]{vm.label}{" "}
+							</span>
+						))}
+					</text>
+				</box>
 
-			{/* Time range selector */}
-			<Box marginBottom={1}>
-				<Text dimColor>
-					Time: [1] 1h [2] 6h [3] 24h [4] 7d | View: [o]verview [t]okens [p]erf
-					[c]ost [d]models
-				</Text>
-			</Box>
+				{/* Time range label */}
+				<text fg={C.text}>
+					<strong>{getTimeRangeLabel(timeRange)}</strong> · {chartView}
+				</text>
 
-			{/* Chart content */}
-			{renderChart()}
-
-			{/* Controls */}
-			<Box marginTop={2}>
-				<Text dimColor>[m] Menu • [r] Refresh • [q/ESC] Back</Text>
-			</Box>
-		</Box>
+				{/* Chart content */}
+				{renderChart()}
+			</box>
+		</scrollbox>
 	);
 }

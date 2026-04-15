@@ -90,7 +90,7 @@ ccflare uses a hierarchical configuration system where environment variables tak
 
 ### Configuration Precedence (highest to lowest)
 1. Environment variables
-2. Configuration file (`~/.ccflare/config.json`)
+2. Configuration file (`~/.config/ccflare/ccflare.json`)
 3. Default values
 
 ### Environment Variables
@@ -116,7 +116,7 @@ RETRY_BACKOFF=2
 
 ### Configuration File
 
-The configuration file is automatically created at `~/.ccflare/config.json` on first run:
+The configuration file is automatically created at `~/.config/ccflare/ccflare.json` on first run (or `$XDG_CONFIG_HOME/ccflare/ccflare.json` if `XDG_CONFIG_HOME` is set):
 
 ```json
 {
@@ -145,7 +145,7 @@ The strategy configuration can be changed at runtime via the HTTP API:
 curl http://localhost:8080/api/config/strategy
 
 # Update strategy (only 'session' is valid)
-curl -X PUT http://localhost:8080/api/config/strategy \
+curl -X POST http://localhost:8080/api/config/strategy \
   -H "Content-Type: application/json" \
   -d '{"strategy": "session"}'
 
@@ -153,7 +153,7 @@ curl -X PUT http://localhost:8080/api/config/strategy \
 curl http://localhost:8080/api/config
 
 # Get available strategies
-curl http://localhost:8080/api/config/strategies
+curl http://localhost:8080/api/strategies
 ```
 
 ## Account Selection Process
@@ -311,4 +311,4 @@ The `RequestMeta` object contains:
 - `timestamp`: Request timestamp
 - `agentUsed`: Optional agent identifier
 
-Currently, only the `SessionStrategy` implementation exists in the codebase at `/packages/load-balancer/src/strategies/index.ts`.
+Currently, only the `SessionStrategy` implementation exists in the codebase at `/packages/proxy/src/strategies/index.ts`.
