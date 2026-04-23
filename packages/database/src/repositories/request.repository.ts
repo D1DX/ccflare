@@ -54,6 +54,7 @@ export interface RequestData {
 interface PersistRequestData extends RequestData {
 	timestamp?: number;
 	payload?: unknown;
+	userId?: string | null;
 }
 
 export class RequestRepository extends BaseRepository<RequestData> {
@@ -66,14 +67,16 @@ export class RequestRepository extends BaseRepository<RequestData> {
 		accountUsed: string | null,
 		statusCode: number | null,
 		timestamp?: number,
+		userId?: string | null,
 	): void {
 		this.run(
 			`
 			INSERT INTO requests (
-				id, timestamp, method, path, provider, upstream_path, account_used, 
-				status_code, success, error_message, response_time_ms, failover_attempts
+				id, timestamp, method, path, provider, upstream_path, account_used,
+				status_code, success, error_message, response_time_ms, failover_attempts,
+				user_id
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?)
 		`,
 			[
 				id,
@@ -84,6 +87,7 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				upstreamPath,
 				accountUsed,
 				statusCode,
+				userId ?? null,
 			],
 		);
 	}
@@ -154,7 +158,8 @@ export class RequestRepository extends BaseRepository<RequestData> {
 					response_id = ?,
 					previous_response_id = ?,
 					response_chain_id = ?,
-					client_session_id = ?
+					client_session_id = ?,
+					user_id = COALESCE(user_id, ?)
 				WHERE id = ?
 			`,
 				[
@@ -187,6 +192,7 @@ export class RequestRepository extends BaseRepository<RequestData> {
 					linkage.previousResponseId,
 					responseChainId,
 					linkage.clientSessionId,
+					data.userId ?? null,
 					data.id,
 				],
 			);

@@ -23,6 +23,8 @@ export interface ParsedArgs {
 	resetStats?: boolean;
 	clearHistory?: boolean;
 	theme?: string;
+	addUser?: string;
+	listUsers?: boolean;
 }
 
 export function parseArgs(args: string[]): ParsedArgs {
@@ -44,6 +46,8 @@ export function parseArgs(args: string[]): ParsedArgs {
 			"reset-stats": { type: "boolean" },
 			"clear-history": { type: "boolean" },
 			theme: { type: "string" },
+			"add-user": { type: "string" },
+			"list-users": { type: "boolean" },
 		},
 		allowPositionals: true,
 	});
@@ -74,6 +78,8 @@ export function parseArgs(args: string[]): ParsedArgs {
 	if (values["reset-stats"]) result.resetStats = true;
 	if (values["clear-history"]) result.clearHistory = true;
 	if (values.theme) result.theme = values.theme;
+	if (values["add-user"]) result.addUser = values["add-user"];
+	if (values["list-users"]) result.listUsers = true;
 
 	return result;
 }

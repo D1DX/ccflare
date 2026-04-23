@@ -35,6 +35,7 @@ export interface ConfigData {
 	port?: number;
 	data_retention_days?: number;
 	request_retention_days?: number;
+	require_access_keys?: boolean;
 	[key: string]: string | number | boolean | undefined;
 }
 
@@ -222,6 +223,14 @@ export class Config extends EventEmitter {
 	setRequestRetentionDays(days: number): void {
 		const clamped = this.clamp(days, 1, 3650);
 		this.set("request_retention_days", clamped);
+	}
+
+	getRequireAccessKeys(): boolean {
+		return this.data.require_access_keys === true;
+	}
+
+	setRequireAccessKeys(value: boolean): void {
+		this.set("require_access_keys", value);
 	}
 
 	getAllSettings(): Record<string, string | number | boolean | undefined> {

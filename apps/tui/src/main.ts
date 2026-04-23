@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { generateAccessKey } from "@ccflare/api";
 import { Config } from "@ccflare/config";
 import { container, NETWORK, SERVICE_KEYS, shutdown } from "@ccflare/core";
 import { DatabaseFactory } from "@ccflare/database";
@@ -77,6 +78,8 @@ Options:
   --reset-stats        Reset usage statistics
   --clear-history      Clear request history
   --theme <name>       Set color theme (e.g. tokyo-night, catppuccin-mocha)
+  --add-user <name>    Create a proxy user with a new access key (opt-in feature)
+  --list-users         List proxy users
   --help, -h           Show this help message
 
 Interactive Mode:
@@ -196,6 +199,33 @@ Examples:
 
 	if (parsed.analyze) {
 		await tuiCore.analyzePerformance();
+		return;
+	}
+
+	if (parsed.addUser) {
+		const { key, hash } = await generateAccessKey();
+		const user = dbOps.createUser(parsed.addUser, hash);
+		console.log(`✅ User "${user.name}" created`);
+		console.log(`\nAccess key (store now — not shown again):\n  ${key}\n`);
+		return;
+	}
+
+	if (parsed.listUsers) {
+		const users = dbOps.getAllUsers();
+		if (users.length === 0) {
+			console.log("No users configured");
+		} else {
+			console.log("\nUsers:");
+			console.log("Name".padEnd(20) + "ID".padEnd(38) + "Created");
+			console.log("─".repeat(78));
+			for (const u of users) {
+				console.log(
+					u.name.padEnd(20) +
+						u.id.padEnd(38) +
+						new Date(u.createdAt).toISOString(),
+				);
+			}
+		}
 		return;
 	}
 

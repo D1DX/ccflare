@@ -393,6 +393,24 @@ function migrateRequestsTable(db: Database, columns: TableInfoRow[]): void {
 	log.info("Migrated requests table to v2 schema");
 }
 
+function ensureUsersTable(db: Database): void {
+	db.run(`
+		CREATE TABLE IF NOT EXISTS users (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE,
+			access_key_hash TEXT NOT NULL UNIQUE,
+			created_at INTEGER NOT NULL
+		)
+	`);
+}
+
+function ensureRequestUserIdColumn(db: Database): void {
+	const columns = getTableInfo(db, "requests");
+	if (!hasColumn(columns, "user_id")) {
+		db.run(`ALTER TABLE requests ADD COLUMN user_id TEXT`);
+	}
+}
+
 function ensureAuthSessionsTable(db: Database): void {
 	db.run(`
 		CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -559,6 +577,8 @@ export function ensureSchema(db: Database): void {
 	`);
 
 	ensureAuthSessionsTable(db);
+	ensureUsersTable(db);
+	ensureRequestUserIdColumn(db);
 }
 
 export function runMigrations(db: Database): void {
@@ -581,6 +601,8 @@ export function runMigrations(db: Database): void {
 	db.run("DROP TABLE IF EXISTS oauth_sessions");
 	db.run("DROP INDEX IF EXISTS idx_oauth_sessions_expires");
 	ensureAuthSessionsTable(db);
+	ensureUsersTable(db);
+	ensureRequestUserIdColumn(db);
 	ensureAccountsNameUniqueness(db);
 
 	// Add performance indexes

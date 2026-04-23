@@ -19,6 +19,7 @@ type ServerFetchHandlerDependencies = {
 	handleCompatibilityRequest?: typeof handleCompatibilityProxy;
 	handleWebSocketUpgrade?: typeof handleWebSocketUpgradeRequest;
 	serveDashboardAsset?: (url: URL) => Response | null;
+	accessKeyGuard?: (req: Request) => Promise<Response | Request | null>;
 };
 
 export function createServerFetchHandler({
@@ -29,6 +30,7 @@ export function createServerFetchHandler({
 	handleCompatibilityRequest = handleCompatibilityProxy,
 	handleWebSocketUpgrade = handleWebSocketUpgradeRequest,
 	serveDashboardAsset = serveDashboardRoute,
+	accessKeyGuard,
 }: ServerFetchHandlerDependencies) {
 	return async (
 		req: Request,
@@ -66,6 +68,12 @@ export function createServerFetchHandler({
 				if (isWebSocketUpgradeRequest(req)) {
 					return;
 				}
+			}
+
+			if (accessKeyGuard) {
+				const guardResult = await accessKeyGuard(req);
+				if (guardResult instanceof Response) return guardResult;
+				if (guardResult instanceof Request) req = guardResult;
 			}
 
 			try {

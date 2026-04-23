@@ -31,6 +31,11 @@ import {
 } from "./handlers/requests";
 import { createRequestsStreamHandler } from "./handlers/requests-stream";
 import { createStatsHandler, createStatsResetHandler } from "./handlers/stats";
+import {
+	createUserAddHandler,
+	createUserDeleteHandler,
+	createUsersListHandler,
+} from "./handlers/users";
 import type { APIContext } from "./types";
 
 type RouteHandler = (
@@ -119,6 +124,11 @@ export class APIRouter {
 		const authCompleteHandler = createAuthCompleteHandler(dbOps);
 		const authSessionStatusHandler = createAuthSessionStatusHandler(dbOps);
 		const authCallbackHandler = createAuthCallbackHandler(dbOps);
+
+		// User admin handlers (gated by require_access_keys config flag)
+		const usersListHandler = createUsersListHandler(dbOps);
+		const userAddHandler = createUserAddHandler(dbOps);
+		const userDeleteHandler = createUserDeleteHandler(dbOps);
 
 		this.staticHandlers.set("GET:/health", () => healthHandler());
 		this.staticHandlers.set("GET:/api/stats", () => statsHandler());
@@ -237,6 +247,21 @@ export class APIRouter {
 			"GET",
 			"/oauth/:provider/callback",
 			(req, url, params) => authCallbackHandler(req, params.provider, url),
+		);
+
+		// User admin routes — gated by require_access_keys config flag.
+		// When the flag is off, they 404 (preserving upstream ccflare behavior).
+		const notFound = () => errorResponse(NotFound("Not found"));
+		this.staticHandlers.set("GET:/api/users", () =>
+			config.getRequireAccessKeys() ? usersListHandler() : notFound(),
+		);
+		this.staticHandlers.set("POST:/api/users", (req) =>
+			config.getRequireAccessKeys() ? userAddHandler(req) : notFound(),
+		);
+		this.addDynamicRoute("DELETE", "/api/users/:userId", (req, _url, params) =>
+			config.getRequireAccessKeys()
+				? userDeleteHandler(req, params.userId)
+				: notFound(),
 		);
 	}
 

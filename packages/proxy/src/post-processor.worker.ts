@@ -558,6 +558,7 @@ async function handleStart(msg: StartMessage): Promise<void> {
 	}
 
 	// Save minimal request info immediately
+	const userId = msg.requestHeaders["x-ccflare-user-id"] ?? null;
 	asyncWriter.enqueue(() =>
 		dbOps.saveRequestMeta(
 			msg.requestId,
@@ -568,6 +569,7 @@ async function handleStart(msg: StartMessage): Promise<void> {
 			msg.accountId,
 			msg.responseStatus,
 			msg.timestamp,
+			userId,
 		),
 	);
 
@@ -813,6 +815,7 @@ async function handleEnd(msg: EndMessage): Promise<void> {
 				timestamp: startMessage.timestamp,
 				payload,
 				timings,
+				userId: startMessage.requestHeaders["x-ccflare-user-id"] ?? null,
 			},
 		),
 	);

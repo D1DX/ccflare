@@ -18,3 +18,9 @@ skills-lock.json
 
 .claude/skills/
 git-crypt-key
+credentials.json
+*.har
+*.pem
+*.key
+GEMINI.md
+.gemini/settings.json

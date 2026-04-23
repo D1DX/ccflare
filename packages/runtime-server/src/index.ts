@@ -10,6 +10,7 @@ import {
 } from "@ccflare/proxy";
 import { serve } from "bun";
 import { bootstrapRuntime, logInitialAccountStatus } from "./bootstrap-runtime";
+import { createAccessKeyGuard } from "./access-key-middleware";
 import { loadDashboardAssets, resetDashboardAssets } from "./dashboard-assets";
 import { createServerFetchHandler } from "./fetch-handler";
 import { createStartupBanner } from "./startup-banner";
@@ -143,6 +144,7 @@ export default function startServer(
 		apiRouter,
 		proxyContext,
 		withDashboard,
+		accessKeyGuard: createAccessKeyGuard(dbOps, config),
 	});
 
 	// Main server

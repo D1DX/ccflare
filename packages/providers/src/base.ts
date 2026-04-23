@@ -10,6 +10,7 @@ const TRANSPORT_HEADERS_TO_DELETE = [
 	"host",
 	"accept-encoding",
 	"content-encoding",
+	"x-ccflare-user-id",
 ] as const;
 
 /**

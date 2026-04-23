@@ -20,6 +20,7 @@ import {
 	type CreateAccountData,
 	type UpdateAccountData,
 } from "./repositories/account.repository";
+import { UserRepository } from "./repositories/user.repository";
 import {
 	type AnalyticsQueryOptions,
 	AnalyticsRepository,
@@ -52,6 +53,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 	private authSessions: AuthSessionRepository;
 	private strategy: StrategyRepository;
 	private stats: StatsRepository;
+	private users: UserRepository;
 
 	constructor(dbPath?: string) {
 		const resolvedPath = dbPath ?? resolveDbPath();
@@ -78,6 +80,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		this.authSessions = new AuthSessionRepository(this.db);
 		this.strategy = new StrategyRepository(this.db);
 		this.stats = new StatsRepository(this.db);
+		this.users = new UserRepository(this.db);
 	}
 
 	setRuntimeConfig(runtime: RuntimeConfig): void {
@@ -208,6 +211,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		accountUsed: string | null,
 		statusCode: number | null,
 		timestamp?: number,
+		userId?: string | null,
 	): void {
 		this.requests.saveMeta(
 			id,
@@ -218,6 +222,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 			accountUsed,
 			statusCode,
 			timestamp,
+			userId,
 		);
 	}
 
@@ -238,6 +243,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 			timestamp?: number;
 			payload?: unknown;
 			timings?: RequestData["timings"];
+			userId?: string | null;
 		},
 	): void {
 		this.requests.save({
@@ -256,6 +262,7 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 			timestamp: options?.timestamp,
 			payload: options?.payload,
 			timings: options?.timings,
+			userId: options?.userId,
 		});
 	}
 
@@ -413,6 +420,23 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		const removedOrphans = this.requests.deleteOrphanedPayloads();
 		const removedPayloads = removedPayloadsByAge + removedOrphans;
 		return { removedRequests, removedPayloads };
+	}
+
+	// User operations delegated to repository
+	createUser(name: string, keyHash: string) {
+		return this.users.create(name, keyHash);
+	}
+
+	getAllUsers() {
+		return this.users.findAll();
+	}
+
+	findUserByKeyHash(hash: string) {
+		return this.users.findByKeyHash(hash);
+	}
+
+	deleteUser(id: string): boolean {
+		return this.users.delete(id);
 	}
 
 	close(): void {

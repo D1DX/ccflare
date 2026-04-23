@@ -10,5 +10,6 @@ export { DatabaseFactory } from "./factory";
 export { ensureSchema, runMigrations } from "./migrations";
 export { type AccountRow, toAccount } from "./models/account-row";
 export { type RequestRow, toRequest } from "./models/request-row";
+export { type User } from "./models/user-row";
 export { resolveDbPath } from "./paths";
 export { analyzeIndexUsage } from "./performance-indexes";

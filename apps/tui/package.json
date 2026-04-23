@@ -13,6 +13,7 @@
 		"postpublish": "chmod +x dist/ccflare"
 	},
 	"dependencies": {
+		"@ccflare/api": "workspace:*",
 		"@ccflare/config": "workspace:*",
 		"@ccflare/core": "workspace:*",
 		"@ccflare/database": "workspace:*",
