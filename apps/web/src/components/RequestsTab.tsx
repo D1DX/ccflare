@@ -11,11 +11,13 @@ import {
 	ChevronDown,
 	ChevronRight,
 	Clock,
+	Cpu,
 	Eye,
 	Filter,
 	Hash,
 	RefreshCw,
 	User,
+	Users,
 	X,
 } from "lucide-react";
 import { useState } from "react";
@@ -61,6 +63,10 @@ export function RequestsTab() {
 		allRequests,
 		accountFilter,
 		setAccountFilter,
+		userFilter,
+		setUserFilter,
+		modelFilter,
+		setModelFilter,
 		dateFrom,
 		setDateFrom,
 		dateTo,
@@ -70,6 +76,8 @@ export function RequestsTab() {
 		clearFilters,
 		applyDatePreset,
 		uniqueAccounts,
+		uniqueUsers,
+		uniqueModels,
 		uniqueStatusCodes,
 		hasActiveFilters,
 		loading,
@@ -171,6 +179,33 @@ export function RequestsTab() {
 									<button
 										type="button"
 										onClick={() => setAccountFilter("all")}
+										className="ml-1 p-0.5 hover:bg-destructive/20 rounded"
+									>
+										<X className="h-3 w-3" />
+									</button>
+								</Badge>
+							)}
+							{userFilter !== "all" && (
+								<Badge variant="outline" className="gap-1.5 pr-1">
+									<Users className="h-3 w-3" />
+									{uniqueUsers.find(([id]) => id === userFilter)?.[1] ??
+										userFilter}
+									<button
+										type="button"
+										onClick={() => setUserFilter("all")}
+										className="ml-1 p-0.5 hover:bg-destructive/20 rounded"
+									>
+										<X className="h-3 w-3" />
+									</button>
+								</Badge>
+							)}
+							{modelFilter !== "all" && (
+								<Badge variant="outline" className="gap-1.5 pr-1">
+									<Cpu className="h-3 w-3" />
+									{modelFilter}
+									<button
+										type="button"
+										onClick={() => setModelFilter("all")}
 										className="ml-1 p-0.5 hover:bg-destructive/20 rounded"
 									>
 										<X className="h-3 w-3" />
@@ -341,6 +376,51 @@ export function RequestsTab() {
 									</Select>
 								</div>
 
+								{/* User Filter — renders only when per-user access-keys
+								    feature is enabled and users have issued requests */}
+								{uniqueUsers.length > 0 && (
+									<div>
+										<Label className="text-xs flex items-center gap-1 mb-2">
+											<Users className="h-3 w-3" />
+											User
+										</Label>
+										<Select value={userFilter} onValueChange={setUserFilter}>
+											<SelectTrigger className="h-9">
+												<SelectValue placeholder="All users" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="all">All users</SelectItem>
+												{uniqueUsers.map(([id, name]) => (
+													<SelectItem key={id} value={id}>
+														{name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</div>
+								)}
+
+								{/* Model Filter */}
+								<div>
+									<Label className="text-xs flex items-center gap-1 mb-2">
+										<Cpu className="h-3 w-3" />
+										Model
+									</Label>
+									<Select value={modelFilter} onValueChange={setModelFilter}>
+										<SelectTrigger className="h-9">
+											<SelectValue placeholder="All models" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem value="all">All models</SelectItem>
+											{uniqueModels.map((model) => (
+												<SelectItem key={model} value={model}>
+													{model}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+
 								{/* Status Code Filter */}
 								<div>
 									<Label className="text-xs flex items-center gap-1 mb-2">
@@ -505,6 +585,12 @@ export function RequestsTab() {
 													via{" "}
 													{request.meta.account.name ||
 														`${request.meta.account.id?.slice(0, 8)}...`}
+												</span>
+											)}
+											{summary?.userName && (
+												<span className="text-sm text-muted-foreground flex items-center gap-1">
+													<Users className="h-3 w-3" />
+													{summary.userName}
 												</span>
 											)}
 											{request.meta.transport.rateLimited && (

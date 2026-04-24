@@ -1,4 +1,4 @@
-import type { AccountResponse } from "@ccflare/api";
+import type { AccountResponse, UserResponse } from "@ccflare/api";
 import { HttpClient, HttpError } from "@ccflare/http";
 import type {
 	AccountCreateData,
@@ -42,6 +42,21 @@ class API extends HttpClient {
 
 	async getAccounts(): Promise<AccountResponse[]> {
 		return this.getJson<AccountResponse[]>("/api/accounts");
+	}
+
+	/**
+	 * Fetch the list of users. Returns [] when the per-user access-keys
+	 * feature (require_access_keys) is disabled — the endpoint 404s.
+	 */
+	async getUsers(): Promise<UserResponse[]> {
+		try {
+			return await this.getJson<UserResponse[]>("/api/users");
+		} catch (error) {
+			if (error instanceof HttpError && error.status === 404) {
+				return [];
+			}
+			throw error;
+		}
 	}
 
 	async createApiKeyAccount(data: {

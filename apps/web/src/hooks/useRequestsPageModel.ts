@@ -41,6 +41,8 @@ function upsertRequest(
 export function useRequestsPageModel(limit = 200) {
 	const queryClient = useQueryClient();
 	const [accountFilter, setAccountFilter] = useState<string>("all");
+	const [userFilter, setUserFilter] = useState<string>("all");
+	const [modelFilter, setModelFilter] = useState<string>("all");
 	const [dateFrom, setDateFrom] = useState<string>("");
 	const [dateTo, setDateTo] = useState<string>("");
 	const [statusCodeFilters, setStatusCodeFilters] = useState<Set<string>>(
@@ -254,11 +256,43 @@ export function useRequestsPageModel(limit = 200) {
 				.filter((status): status is number => status !== undefined),
 		),
 	).sort((left, right) => left - right);
+	const uniqueUsers = Array.from(
+		new Map(
+			allRequests
+				.map((request) => {
+					const summary = summaries.get(request.id);
+					if (!summary?.userId) return null;
+					return [summary.userId, summary.userName ?? summary.userId] as const;
+				})
+				.filter((entry): entry is readonly [string, string] => entry !== null),
+		),
+	).sort((left, right) => left[1].localeCompare(right[1]));
+	const uniqueModels = Array.from(
+		new Set(
+			allRequests
+				.map((request) => summaries.get(request.id)?.model)
+				.filter((model): model is string => typeof model === "string" && model.length > 0),
+		),
+	).sort();
 	const requests = allRequests.filter((request) => {
 		if (accountFilter !== "all") {
 			const requestAccount =
 				request.meta?.account?.name || request.meta?.account?.id;
 			if (requestAccount !== accountFilter) {
+				return false;
+			}
+		}
+
+		if (userFilter !== "all") {
+			const summary = summaries.get(request.id);
+			if (summary?.userId !== userFilter) {
+				return false;
+			}
+		}
+
+		if (modelFilter !== "all") {
+			const summary = summaries.get(request.id);
+			if (summary?.model !== modelFilter) {
 				return false;
 			}
 		}
@@ -335,6 +369,8 @@ export function useRequestsPageModel(limit = 200) {
 
 	function clearFilters() {
 		setAccountFilter("all");
+		setUserFilter("all");
+		setModelFilter("all");
 		setDateFrom("");
 		setDateTo("");
 		setStatusCodeFilters(new Set());
@@ -346,6 +382,10 @@ export function useRequestsPageModel(limit = 200) {
 		summaries,
 		accountFilter,
 		setAccountFilter,
+		userFilter,
+		setUserFilter,
+		modelFilter,
+		setModelFilter,
 		dateFrom,
 		setDateFrom,
 		dateTo,
@@ -355,9 +395,13 @@ export function useRequestsPageModel(limit = 200) {
 		clearFilters,
 		applyDatePreset,
 		uniqueAccounts,
+		uniqueUsers,
+		uniqueModels,
 		uniqueStatusCodes,
 		hasActiveFilters:
 			accountFilter !== "all" ||
+			userFilter !== "all" ||
+			modelFilter !== "all" ||
 			dateFrom !== "" ||
 			dateTo !== "" ||
 			statusCodeFilters.size > 0,

@@ -12,6 +12,19 @@ export const useAccounts = () => {
 	});
 };
 
+/**
+ * Returns the list of users for the per-user access-keys feature.
+ * Returns [] when the feature is disabled (endpoint 404s).
+ */
+export const useUsers = () => {
+	return useQuery({
+		queryKey: queryKeys.users(),
+		queryFn: () => api.getUsers(),
+		// Users change rarely — refresh on mount, then on explicit invalidation
+		staleTime: 60_000,
+	});
+};
+
 export const useStats = (refetchInterval?: number) => {
 	return useQuery({
 		queryKey: queryKeys.stats(),

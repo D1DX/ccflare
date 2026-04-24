@@ -34,6 +34,12 @@ export interface AccountResponse {
 	};
 }
 
+export interface UserResponse {
+	id: string;
+	name: string;
+	createdAt: string;
+}
+
 export interface APIContext {
 	config: Config;
 	dbOps: DatabaseOperations;
