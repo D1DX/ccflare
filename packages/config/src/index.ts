@@ -36,6 +36,8 @@ export interface ConfigData {
 	data_retention_days?: number;
 	request_retention_days?: number;
 	require_access_keys?: boolean;
+	enable_exhaustion_alert?: boolean;
+	exhaustion_alert_ntfy_url?: string;
 	[key: string]: string | number | boolean | undefined;
 }
 
@@ -93,7 +95,22 @@ function sanitizeConfigData(value: unknown): ConfigData {
 		delete sanitized.client_id;
 	}
 
+	if (
+		sanitized.exhaustion_alert_ntfy_url !== undefined &&
+		typeof sanitized.exhaustion_alert_ntfy_url !== "string"
+	) {
+		delete sanitized.exhaustion_alert_ntfy_url;
+	}
+
 	return sanitized;
+}
+
+function parseBoolEnv(value: string | undefined): boolean | undefined {
+	if (value === undefined) return undefined;
+	const lowered = value.trim().toLowerCase();
+	if (["1", "true", "yes", "on"].includes(lowered)) return true;
+	if (["0", "false", "no", "off", ""].includes(lowered)) return false;
+	return undefined;
 }
 
 export class Config extends EventEmitter {
@@ -226,11 +243,41 @@ export class Config extends EventEmitter {
 	}
 
 	getRequireAccessKeys(): boolean {
+		const fromEnv = parseBoolEnv(process.env.REQUIRE_ACCESS_KEYS);
+		if (fromEnv !== undefined) return fromEnv;
 		return this.data.require_access_keys === true;
 	}
 
 	setRequireAccessKeys(value: boolean): void {
 		this.set("require_access_keys", value);
+	}
+
+	getExhaustionAlertEnabled(): boolean {
+		const fromEnv = parseBoolEnv(process.env.ENABLE_EXHAUSTION_ALERT);
+		if (fromEnv !== undefined) return fromEnv;
+		return this.data.enable_exhaustion_alert === true;
+	}
+
+	setExhaustionAlertEnabled(value: boolean): void {
+		this.set("enable_exhaustion_alert", value);
+	}
+
+	getExhaustionAlertUrl(): string | null {
+		const fromEnv = process.env.EXHAUSTION_ALERT_NTFY_URL;
+		if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+		const fromFile = this.data.exhaustion_alert_ntfy_url;
+		if (typeof fromFile === "string" && fromFile.trim().length > 0) {
+			return fromFile.trim();
+		}
+		return null;
+	}
+
+	setExhaustionAlertUrl(value: string | null): void {
+		if (value === null) {
+			this.set("exhaustion_alert_ntfy_url", "");
+		} else {
+			this.set("exhaustion_alert_ntfy_url", value);
+		}
 	}
 
 	getAllSettings(): Record<string, string | number | boolean | undefined> {
