@@ -163,6 +163,31 @@ export class AccountRepository extends BaseRepository<Account> {
 	}
 
 	/**
+	 * Counts active (non-paused) accounts: total and currently-available
+	 * (not rate-limited). Used by the exhaustion alert poller to detect
+	 * "all accounts unavailable" without loading full rows.
+	 */
+	countAvailability(): { total: number; available: number } {
+		const now = Date.now();
+		const rows = this.query<{ total: number; available: number }>(
+			`
+			SELECT
+				COUNT(*) AS total,
+				SUM(CASE WHEN rate_limited_until IS NULL OR rate_limited_until < ? THEN 1 ELSE 0 END) AS available
+			FROM accounts
+			WHERE COALESCE(paused, 0) = 0
+		`,
+			[now],
+		);
+		const row = rows[0];
+		if (!row) return { total: 0, available: 0 };
+		return {
+			total: Number(row.total) || 0,
+			available: Number(row.available) || 0,
+		};
+	}
+
+	/**
 	 * Returns accounts available for routing: filters by provider and excludes
 	 * paused accounts and those currently rate-limited, all pushed into SQL.
 	 */

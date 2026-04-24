@@ -112,6 +112,10 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return this.accounts.findAvailableForProvider(provider);
 	}
 
+	countAccountAvailability(): { total: number; available: number } {
+		return this.accounts.countAvailability();
+	}
+
 	createAccount(data: CreateAccountData): Account {
 		return this.accounts.create(data);
 	}

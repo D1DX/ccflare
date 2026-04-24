@@ -12,6 +12,7 @@ import { serve } from "bun";
 import { bootstrapRuntime, logInitialAccountStatus } from "./bootstrap-runtime";
 import { createAccessKeyGuard } from "./access-key-middleware";
 import { loadDashboardAssets, resetDashboardAssets } from "./dashboard-assets";
+import { startExhaustionAlertPoller } from "./exhaustion-alert";
 import { createServerFetchHandler } from "./fetch-handler";
 import { createStartupBanner } from "./startup-banner";
 import { runStartupMaintenance } from "./startup-maintenance";
@@ -24,6 +25,7 @@ const lifecycleLog = new Logger("ServerLifecycle", LogLevel.INFO, {
 // Module-level server instance
 let serverInstance: ReturnType<typeof serve> | null = null;
 let stopRetentionJob: (() => void) | null = null;
+let stopExhaustionAlertJob: (() => void) | null = null;
 let serverStopPromise: Promise<void> | null = null;
 
 export interface ServerHandle {
@@ -40,6 +42,13 @@ function stopRetentionMaintenance(): void {
 	if (stopRetentionJob) {
 		stopRetentionJob();
 		stopRetentionJob = null;
+	}
+}
+
+function stopExhaustionAlert(): void {
+	if (stopExhaustionAlertJob) {
+		stopExhaustionAlertJob();
+		stopExhaustionAlertJob = null;
 	}
 }
 
@@ -74,6 +83,7 @@ async function stopServerRuntime(): Promise<void> {
 		}
 
 		stopRetentionMaintenance();
+		stopExhaustionAlert();
 
 		try {
 			await waitForProxyBackgroundTasks();
@@ -139,6 +149,7 @@ export default function startServer(
 		bootstrapRuntime(port, serverLog);
 
 	stopRetentionJob = runStartupMaintenance(config, dbOps);
+	stopExhaustionAlertJob = startExhaustionAlertPoller({ config, dbOps });
 
 	const fetchHandler = createServerFetchHandler({
 		apiRouter,
