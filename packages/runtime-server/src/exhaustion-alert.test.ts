@@ -6,6 +6,7 @@ type Counts = { total: number; available: number };
 function makeDeps(opts: {
 	enabled: boolean;
 	url: string | null;
+	token?: string | null;
 	countsQueue: Counts[];
 	fetchResponses?: Response[];
 	fetchErrors?: Error[];
@@ -13,7 +14,11 @@ function makeDeps(opts: {
 	const counts = [...opts.countsQueue];
 	const fetchResponses = [...(opts.fetchResponses ?? [])];
 	const fetchErrors = [...(opts.fetchErrors ?? [])];
-	const calls: Array<{ url: string; body: unknown }> = [];
+	const calls: Array<{
+		url: string;
+		body: unknown;
+		headers: Record<string, string>;
+	}> = [];
 	let lastHandler: (() => void) | null = null;
 
 	const logSink = {
@@ -26,6 +31,7 @@ function makeDeps(opts: {
 		config: {
 			getExhaustionAlertEnabled: () => opts.enabled,
 			getExhaustionAlertUrl: () => opts.url,
+			getExhaustionAlertToken: () => opts.token ?? null,
 		},
 		dbOps: {
 			countAccountAvailability: (): Counts => {
@@ -33,7 +39,12 @@ function makeDeps(opts: {
 			},
 		},
 		fetchImpl: (async (url: string, init?: RequestInit) => {
-			calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			calls.push({
+				url,
+				body: init?.body ? JSON.parse(String(init.body)) : null,
+				headers: { ...headers },
+			});
 			const err = fetchErrors.shift();
 			if (err) throw err;
 			return fetchResponses.shift() ?? new Response(null, { status: 200 });
@@ -137,6 +148,35 @@ describe("startExhaustionAlertPoller", () => {
 		await trigger();
 		await trigger();
 		expect(calls.length).toBe(0);
+		stop();
+	});
+
+	it("attaches Bearer token when configured", async () => {
+		const { deps, calls, trigger } = makeDeps({
+			enabled: true,
+			url: "https://ntfy.example/claude-proxy",
+			token: "tk_secret_xyz",
+			countsQueue: [{ total: 3, available: 0 }],
+		});
+		const stop = startExhaustionAlertPoller(deps);
+		await trigger();
+		expect(calls.length).toBe(1);
+		expect(calls[0].headers.Authorization).toBe("Bearer tk_secret_xyz");
+		expect(calls[0].headers["Content-Type"]).toBe("application/json");
+		stop();
+	});
+
+	it("omits Authorization header when no token set", async () => {
+		const { deps, calls, trigger } = makeDeps({
+			enabled: true,
+			url: "https://ntfy.example/claude-proxy",
+			token: null,
+			countsQueue: [{ total: 3, available: 0 }],
+		});
+		const stop = startExhaustionAlertPoller(deps);
+		await trigger();
+		expect(calls.length).toBe(1);
+		expect(calls[0].headers.Authorization).toBeUndefined();
 		stop();
 	});
 

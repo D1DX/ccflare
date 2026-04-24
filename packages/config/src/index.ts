@@ -38,6 +38,7 @@ export interface ConfigData {
 	require_access_keys?: boolean;
 	enable_exhaustion_alert?: boolean;
 	exhaustion_alert_ntfy_url?: string;
+	exhaustion_alert_ntfy_token?: string;
 	[key: string]: string | number | boolean | undefined;
 }
 
@@ -100,6 +101,13 @@ function sanitizeConfigData(value: unknown): ConfigData {
 		typeof sanitized.exhaustion_alert_ntfy_url !== "string"
 	) {
 		delete sanitized.exhaustion_alert_ntfy_url;
+	}
+
+	if (
+		sanitized.exhaustion_alert_ntfy_token !== undefined &&
+		typeof sanitized.exhaustion_alert_ntfy_token !== "string"
+	) {
+		delete sanitized.exhaustion_alert_ntfy_token;
 	}
 
 	return sanitized;
@@ -277,6 +285,24 @@ export class Config extends EventEmitter {
 			this.set("exhaustion_alert_ntfy_url", "");
 		} else {
 			this.set("exhaustion_alert_ntfy_url", value);
+		}
+	}
+
+	getExhaustionAlertToken(): string | null {
+		const fromEnv = process.env.EXHAUSTION_ALERT_NTFY_TOKEN;
+		if (fromEnv && fromEnv.trim().length > 0) return fromEnv.trim();
+		const fromFile = this.data.exhaustion_alert_ntfy_token;
+		if (typeof fromFile === "string" && fromFile.trim().length > 0) {
+			return fromFile.trim();
+		}
+		return null;
+	}
+
+	setExhaustionAlertToken(value: string | null): void {
+		if (value === null) {
+			this.set("exhaustion_alert_ntfy_token", "");
+		} else {
+			this.set("exhaustion_alert_ntfy_token", value);
 		}
 	}
 

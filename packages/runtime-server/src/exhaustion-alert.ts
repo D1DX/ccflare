@@ -5,7 +5,9 @@ import { Logger } from "@ccflare/logger";
 export interface ExhaustionAlertDeps {
 	config: Pick<
 		Config,
-		"getExhaustionAlertEnabled" | "getExhaustionAlertUrl"
+		| "getExhaustionAlertEnabled"
+		| "getExhaustionAlertUrl"
+		| "getExhaustionAlertToken"
 	>;
 	dbOps: Pick<DatabaseOperations, "countAccountAvailability">;
 	fetchImpl?: typeof fetch;
@@ -59,7 +61,8 @@ export function startExhaustionAlertPoller(
 			const exhausted = total > 0 && available === 0;
 
 			if (exhausted && !lastAlertState) {
-				await postAlert(fetchImpl, url, total, logger);
+				const token = config.getExhaustionAlertToken();
+				await postAlert(fetchImpl, url, token, total, logger);
 				lastAlertState = true;
 			} else if (!exhausted && lastAlertState) {
 				lastAlertState = false;
@@ -86,6 +89,7 @@ export function startExhaustionAlertPoller(
 async function postAlert(
 	fetchImpl: typeof fetch,
 	url: string,
+	token: string | null,
 	total: number,
 	logger: Pick<Logger, "info" | "warn" | "error">,
 ): Promise<void> {
@@ -97,10 +101,17 @@ async function postAlert(
 		ts: new Date().toISOString(),
 	};
 
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (token) {
+		headers.Authorization = `Bearer ${token}`;
+	}
+
 	try {
 		const res = await fetchImpl(url, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers,
 			body: JSON.stringify(body),
 		});
 		if (!res.ok) {
