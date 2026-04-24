@@ -40,6 +40,16 @@ export interface UserResponse {
 	createdAt: string;
 }
 
+export interface SpendingByUserResponse {
+	range: string;
+	users: Array<{
+		userId: string;
+		userName: string | null;
+		costUsd: number;
+		requestCount: number;
+	}>;
+}
+
 export interface APIContext {
 	config: Config;
 	dbOps: DatabaseOperations;

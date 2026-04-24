@@ -30,6 +30,7 @@ import {
 	createRequestsSummaryHandler,
 } from "./handlers/requests";
 import { createRequestsStreamHandler } from "./handlers/requests-stream";
+import { createSpendingByUserHandler } from "./handlers/spending";
 import { createStatsHandler, createStatsResetHandler } from "./handlers/stats";
 import {
 	createUserAddHandler,
@@ -129,6 +130,7 @@ export class APIRouter {
 		const usersListHandler = createUsersListHandler(dbOps);
 		const userAddHandler = createUserAddHandler(dbOps);
 		const userDeleteHandler = createUserDeleteHandler(dbOps);
+		const spendingByUserHandler = createSpendingByUserHandler(dbOps);
 
 		this.staticHandlers.set("GET:/health", () => healthHandler());
 		this.staticHandlers.set("GET:/api/stats", () => statsHandler());
@@ -261,6 +263,13 @@ export class APIRouter {
 		this.addDynamicRoute("DELETE", "/api/users/:userId", (req, _url, params) =>
 			config.getRequireAccessKeys()
 				? userDeleteHandler(req, params.userId)
+				: notFound(),
+		);
+
+		// Spending-by-user analytics (same gate as /api/users)
+		this.staticHandlers.set("GET:/api/analytics/by-user", (_req, url) =>
+			config.getRequireAccessKeys()
+				? spendingByUserHandler(url.searchParams)
 				: notFound(),
 		);
 	}

@@ -1,4 +1,8 @@
-import type { AccountResponse, UserResponse } from "@ccflare/api";
+import type {
+	AccountResponse,
+	SpendingByUserResponse,
+	UserResponse,
+} from "@ccflare/api";
 import { HttpClient, HttpError } from "@ccflare/http";
 import type {
 	AccountCreateData,
@@ -54,6 +58,26 @@ class API extends HttpClient {
 		} catch (error) {
 			if (error instanceof HttpError && error.status === 404) {
 				return [];
+			}
+			throw error;
+		}
+	}
+
+	/**
+	 * Fetch per-user spending for a time range. Returns an empty users
+	 * array when the per-user access-keys feature is disabled (404).
+	 */
+	async getSpendingByUser(
+		range: TimeRange = "24h",
+	): Promise<SpendingByUserResponse> {
+		const params = new URLSearchParams({ range });
+		try {
+			return await this.getJson<SpendingByUserResponse>(
+				`/api/analytics/by-user?${params}`,
+			);
+		} catch (error) {
+			if (error instanceof HttpError && error.status === 404) {
+				return { range, users: [] };
 			}
 			throw error;
 		}

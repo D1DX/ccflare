@@ -25,6 +25,17 @@ export const useUsers = () => {
 	});
 };
 
+/**
+ * Per-user spending over a time range. Returns { users: [] } when the
+ * per-user access-keys feature is disabled.
+ */
+export const useSpendingByUser = (timeRange: TimeRange) => {
+	return useQuery({
+		queryKey: queryKeys.spendingByUser(timeRange),
+		queryFn: () => api.getSpendingByUser(timeRange),
+	});
+};
+
 export const useStats = (refetchInterval?: number) => {
 	return useQuery({
 		queryKey: queryKeys.stats(),

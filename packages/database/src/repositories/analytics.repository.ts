@@ -328,4 +328,45 @@ export class AnalyticsRepository extends BaseRepository<never> {
 			queryParams,
 		};
 	}
+
+	/**
+	 * Group spending by user. Rows without a user_id (pre-Phase-2 requests
+	 * or requests with require_access_keys off) are excluded.
+	 */
+	getCostByUser(
+		sinceMs?: number,
+	): Array<{
+		userId: string;
+		userName: string | null;
+		costUsd: number;
+		requestCount: number;
+	}> {
+		const whereClause = sinceMs ? "AND r.timestamp > ?" : "";
+		const params = sinceMs ? [sinceMs] : [];
+		return this.query<{
+			user_id: string;
+			user_name: string | null;
+			cost_usd: number | null;
+			request_count: number;
+		}>(
+			`
+				SELECT
+					r.user_id as user_id,
+					u.name as user_name,
+					SUM(COALESCE(r.cost_usd, 0)) as cost_usd,
+					COUNT(*) as request_count
+				FROM requests r
+				LEFT JOIN users u ON r.user_id = u.id
+				WHERE r.user_id IS NOT NULL ${whereClause}
+				GROUP BY r.user_id
+				ORDER BY cost_usd DESC
+			`,
+			params,
+		).map((row) => ({
+			userId: row.user_id,
+			userName: row.user_name ?? null,
+			costUsd: row.cost_usd ?? 0,
+			requestCount: row.request_count,
+		}));
+	}
 }

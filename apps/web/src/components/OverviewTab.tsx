@@ -15,6 +15,7 @@ import { DataRetentionCard } from "./overview/DataRetentionCard";
 import { LoadingSkeleton } from "./overview/LoadingSkeleton";
 import { MetricCard } from "./overview/MetricCard";
 import { RateLimitInfo } from "./overview/RateLimitInfo";
+import { SpendingByUserCard } from "./overview/SpendingByUserCard";
 import { SystemStatus } from "./overview/SystemStatus";
 import { TimeRangeSelector } from "./overview/TimeRangeSelector";
 import { StrategyCard } from "./StrategyCard";
@@ -218,6 +219,10 @@ export function OverviewTab() {
 			<SystemStatus recentErrors={stats?.recentErrors} />
 
 			{accounts && <RateLimitInfo accounts={accounts} />}
+
+			{/* Per-user spending (renders only when require_access_keys is on
+			    and at least one user has logged a tagged request in range) */}
+			<SpendingByUserCard timeRange={timeRange} />
 
 			{/* Configuration Row */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

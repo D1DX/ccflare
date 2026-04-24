@@ -397,6 +397,10 @@ export class DatabaseOperations implements StrategyStore, Disposable {
 		return this.analytics.getAnalytics(options);
 	}
 
+	getCostByUser(sinceMs?: number) {
+		return this.analytics.getCostByUser(sinceMs);
+	}
+
 	// Cleanup operations (payload by age; request metadata by age; plus orphan sweep)
 	cleanupOldRequests(
 		payloadRetentionMs: number,
