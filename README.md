@@ -209,6 +209,62 @@ Key endpoints:
 - `POST /api/maintenance/cleanup` — run data cleanup
 - `POST /api/maintenance/compact` — compact the database
 
+## Per-user access keys (opt-in)
+
+When `require_access_keys: true` in `ccflare.json`, the `/v1/*` proxy path requires an access key per request and every request is tagged with the corresponding `user_id` in the `requests` table — useful for multi-operator deployments where you want both access control and per-user attribution.
+
+The feature is **opt-in and default-off**. With the flag off, ccflare behavior is byte-identical to a build without this feature.
+
+### Enabling
+
+```bash
+# Set in ~/.config/ccflare/ccflare.json (or equivalent config location):
+{ "require_access_keys": true }
+```
+
+Create your first user (mirrors the `--add-account` bootstrap pattern):
+
+```bash
+bun run ccflare --add-user alice
+# ✅ User "alice" created
+# Access key (store now — not shown again):
+#   ccfk_<64-hex>
+```
+
+List users (shows names + IDs + created timestamp, never the key):
+
+```bash
+bun run ccflare --list-users
+```
+
+### Using a key
+
+Clients send the key on either header — both work; `ccfk_` prefix disambiguates:
+
+```bash
+# Authorization: Bearer
+curl -H "Authorization: Bearer ccfk_..." http://localhost:8080/v1/anthropic/v1/messages ...
+
+# Or x-api-key (what Claude Code's apiKeyHelper populates)
+curl -H "x-api-key: ccfk_..." http://localhost:8080/v1/anthropic/v1/messages ...
+```
+
+The key is SHA-256 hashed at rest in the `users` table; plaintext is only shown once on CLI creation.
+
+### Admin API (flag-gated)
+
+- `GET /api/users` — list users
+- `POST /api/users` — create a user, returns the plaintext key once
+- `DELETE /api/users/:id` — remove a user
+
+These endpoints return `404` when `require_access_keys` is `false` — the admin surface is invisible unless the feature is on.
+
+### Notes
+
+- WebSocket upgrades on `/v1` (dashboard live-stream) are exempt from the guard
+- Internal tagging header (`x-ccflare-user-id`) is stripped before forwarding upstream — never reaches Anthropic / OpenAI
+- The access key check runs after WebSocket handling and before proxy forwarding, so all other ccflare behavior (rotation, rate-limit handling, request history) is unchanged
+
 ## UI and developer tools
 
 - **Dashboard:** `http://localhost:8080`
