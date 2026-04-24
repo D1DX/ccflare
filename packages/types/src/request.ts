@@ -116,6 +116,7 @@ export interface Request {
 	previousResponseId: string | null;
 	responseChainId: string | null;
 	clientSessionId: string | null;
+	userId: string | null;
 }
 
 // Shared request summary transport
@@ -152,6 +153,8 @@ export interface RequestSummary {
 	previousResponseId: string | null;
 	responseChainId: string | null;
 	clientSessionId: string | null;
+	userId: string | null;
+	userName: string | null;
 }
 
 export interface RequestTraceMeta {
@@ -239,6 +242,8 @@ export function toRequestSummary(request: Request): RequestSummary {
 		previousResponseId: request.previousResponseId ?? null,
 		responseChainId: request.responseChainId ?? null,
 		clientSessionId: request.clientSessionId ?? null,
+		userId: request.userId ?? null,
+		userName: null,
 	};
 }
 
@@ -284,7 +289,9 @@ export function isRequestSummary(value: unknown): value is RequestSummary {
 		isNullableString(value.responseId) &&
 		isNullableString(value.previousResponseId) &&
 		isNullableString(value.responseChainId) &&
-		isNullableString(value.clientSessionId)
+		isNullableString(value.clientSessionId) &&
+		isNullableString(value.userId) &&
+		isNullableString(value.userName)
 	);
 }
 

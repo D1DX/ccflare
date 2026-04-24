@@ -59,6 +59,7 @@ describe("request types", () => {
 				previousResponseId: null,
 				responseChainId: null,
 				clientSessionId: null,
+				userId: null,
 			}),
 		).toEqual({
 			id: "request-2",
@@ -93,6 +94,8 @@ describe("request types", () => {
 			previousResponseId: null,
 			responseChainId: null,
 			clientSessionId: null,
+			userId: null,
+			userName: null,
 		});
 	});
 
@@ -164,6 +167,8 @@ describe("request types", () => {
 			previousResponseId: null,
 			responseChainId: null,
 			clientSessionId: null,
+			userId: null,
+			userName: null,
 		});
 	});
 
@@ -202,6 +207,8 @@ describe("request types", () => {
 				previousResponseId: null,
 				responseChainId: null,
 				clientSessionId: null,
+				userId: null,
+				userName: null,
 			}),
 		).toBe(true);
 	});

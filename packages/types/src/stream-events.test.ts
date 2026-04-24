@@ -98,6 +98,8 @@ describe("stream event validation", () => {
 					previousResponseId: null,
 					responseChainId: null,
 					clientSessionId: null,
+					userId: null,
+					userName: null,
 				},
 			}),
 		).toEqual({
@@ -135,6 +137,8 @@ describe("stream event validation", () => {
 				previousResponseId: null,
 				responseChainId: null,
 				clientSessionId: null,
+				userId: null,
+				userName: null,
 			},
 		});
 	});

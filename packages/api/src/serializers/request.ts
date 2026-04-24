@@ -7,6 +7,7 @@ import {
 
 type RequestWithAccountName = Request & {
 	accountName?: string | null;
+	userName?: string | null;
 };
 
 export function serializeRequestResponse(
@@ -15,6 +16,7 @@ export function serializeRequestResponse(
 	return {
 		...toRequestSummary(request),
 		accountName: request.accountName ?? null,
+		userName: request.userName ?? null,
 	};
 }
 

@@ -2,6 +2,7 @@ import type { AccountProvider, HttpMethod, Request } from "@ccflare/types";
 
 export type RequestWithAccountName = Request & {
 	accountName: string | null;
+	userName: string | null;
 };
 
 export interface RequestRow {
@@ -36,6 +37,7 @@ export interface RequestRow {
 	previous_response_id: string | null;
 	response_chain_id: string | null;
 	client_session_id: string | null;
+	user_id: string | null;
 }
 
 export function toRequest(row: RequestRow): Request {
@@ -71,14 +73,19 @@ export function toRequest(row: RequestRow): Request {
 		previousResponseId: row.previous_response_id ?? null,
 		responseChainId: row.response_chain_id ?? null,
 		clientSessionId: row.client_session_id ?? null,
+		userId: row.user_id ?? null,
 	};
 }
 
 export function toRequestWithAccountName(
-	row: RequestRow & { account_name: string | null },
+	row: RequestRow & {
+		account_name: string | null;
+		user_name?: string | null;
+	},
 ): RequestWithAccountName {
 	return {
 		...toRequest(row),
 		accountName: row.account_name ?? null,
+		userName: row.user_name ?? null,
 	};
 }

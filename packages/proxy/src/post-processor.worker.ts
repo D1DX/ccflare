@@ -862,6 +862,8 @@ async function handleEnd(msg: EndMessage): Promise<void> {
 		previousResponseId: linkage.previousResponseId,
 		responseChainId: null,
 		clientSessionId,
+		userId: startMessage.requestHeaders["x-ccflare-user-id"] ?? null,
+		userName: null,
 	};
 
 	self.postMessage({

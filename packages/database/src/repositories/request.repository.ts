@@ -397,11 +397,14 @@ export class RequestRepository extends BaseRepository<RequestData> {
 	}
 
 	listSummaries(limit = 100): RequestSummary[] {
-		return this.query<RequestRow & { account_name: string | null }>(
+		return this.query<
+			RequestRow & { account_name: string | null; user_name: string | null }
+		>(
 			`
-				SELECT r.*, a.name as account_name
+				SELECT r.*, a.name as account_name, u.name as user_name
 				FROM requests r
 				LEFT JOIN accounts a ON r.account_used = a.id
+				LEFT JOIN users u ON r.user_id = u.id
 				ORDER BY r.timestamp DESC
 				LIMIT ?
 			`,
@@ -415,17 +418,21 @@ export class RequestRepository extends BaseRepository<RequestData> {
 				{
 					...toRequestSummary(toRequest(row)),
 					accountName: row.account_name ?? null,
+					userName: row.user_name ?? null,
 				},
 			];
 		});
 	}
 
 	listWithAccountNames(limit = 100): RequestWithAccountName[] {
-		return this.query<RequestRow & { account_name: string | null }>(
+		return this.query<
+			RequestRow & { account_name: string | null; user_name: string | null }
+		>(
 			`
-				SELECT r.*, a.name as account_name
+				SELECT r.*, a.name as account_name, u.name as user_name
 				FROM requests r
 				LEFT JOIN accounts a ON r.account_used = a.id
+				LEFT JOIN users u ON r.user_id = u.id
 				ORDER BY r.timestamp DESC
 				LIMIT ?
 			`,
